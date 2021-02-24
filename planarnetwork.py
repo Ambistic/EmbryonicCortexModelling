@@ -36,8 +36,8 @@ class PlanarNetwork:
         we should compute
         """
                     
-    def show_all(self, k=5, iterations=1000):
-        plt.figure()
+    def show_all(self, k=5, iterations=1000, figsize=(10, 10)):
+        plt.figure(figsize=figsize)
         pos = nx.spring_layout(self.G, k=k, iterations=iterations)
         nx.draw_networkx(self.G, pos, node_color="orange")
         
