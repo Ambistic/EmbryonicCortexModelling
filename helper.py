@@ -27,8 +27,15 @@ def comp(a: tuple, b: tuple) -> bool:
         return True
     return False
 
-def unique(ls):  # onl for hashable stuff
+def unique(ls):  # only for hashable stuff
     return list(set(ls))
+
+def unique_keep_order(ls):
+    new_ls = []
+    for x in ls:
+        if x not in new_ls:
+            new_ls.append(x)
+    return new_ls
 
 def index_of(x, ls):
     if type(x) != tuple:
@@ -83,13 +90,13 @@ def cycle_from_ordered_list_pairs(ls_p):
         ls[0][0], ls[0][1] = ls[0][1], ls[0][0]
         
     for i in range(1, len(ls)):
-        if ls[i][1] in ls[i - 1]:
+        if ls[i][1] in ls[i - 1][:2]:
             ls[i][0], ls[i][1] = ls[i][1], ls[i][0]
             
     return list(map(tuple, ls))
 
 def list_from_cycle_dual(dict_):
-    ls = flatten(list(dict_.values()))
+    ls = flatten([x[:2] for x in dict_.values()])
     return list(set(ls))  # for unique
     
 #############
@@ -144,8 +151,14 @@ class CircularList(list):
         current = pattern[0]
         idx = self.index(current)
         
+        if type(current) is int:
+            test = lambda x, y: x == y
+        else:
+            test = comp
+        
         for i in range(len(pattern)):
-            if not comp(pattern[i], current):
+            
+            if not test(pattern[i], current):
                 return False
             current = self.next(current)
             

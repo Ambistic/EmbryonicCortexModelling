@@ -1,8 +1,13 @@
 import networkx as nx
 from helper import *
 
+class BaseNetwork:
+    def check(self, seq, error):
+        if seq is not True:
+            raise ValueError(error)
 
-class PlanarNetwork:
+
+class PlanarNetwork(BaseNetwork):
     def __init__(self):
         self.G = nx.Graph()  # planar graph
         self.D = nx.MultiGraph()  # dual graph

@@ -10,10 +10,6 @@ class GrowingPlanarNetwork(PlanarNetwork):
     Growing and shrinking rules are as follow :
     - ...
     """
-    
-    def check(self, seq, error):
-        if seq is not True:
-            raise ValueError(error)
         
     def index_from_coord(self, i, j, size):
         if i < 0 or j < 0 or j >= size or i >= size:
@@ -134,7 +130,7 @@ class GrowingPlanarNetwork(PlanarNetwork):
         
     def duplicate_random_node(self):
         n = random.choice(list(self.G.nodes))
-        self.duplicate_node(n)
+        return self.duplicate_node(n)
     
     def duplicate_node(self, node):
         """
@@ -202,10 +198,12 @@ class GrowingPlanarNetwork(PlanarNetwork):
         second_dual_edge = Ltuple(cycle_dual[opp_split_ngb])
 
         if len(cycle_dual) >= 3:
-            # implicit
+            print("GG3")
+            # implicit, nope it is not ok at all
             first_dual, second_dual = first_dual_edge[0], second_dual_edge[0]
             
         elif len(cycle_dual) == 2:
+            print("GG2")
             assert min(first_dual_edge[:2]) == min(second_dual_edge[:2])
             assert max(first_dual_edge[:2]) == max(second_dual_edge[:2])
             # need to use the non -1 dual as an anchor
@@ -234,10 +232,16 @@ class GrowingPlanarNetwork(PlanarNetwork):
         
         # B
         dual_list = list_from_cycle_dual(cycle_dual)
-        
         for dual_node in dual_list:
             if self.D.degree(dual_node) > 4 and dual_node != -1:
-                self.shorten_cycle(dual_node)
+                try:
+                    self.shorten_cycle(dual_node)
+                except:
+                    print("debug")
+                    print(locals())
+                    raise
+                
+        return new_node
         
     def shorten_cycle(self, dual_node, source=None, target=None):  # aka Compensation Step
         """
@@ -314,7 +318,14 @@ class GrowingPlanarNetwork(PlanarNetwork):
             planar_edge = map_ingb_pair[current]
             dual_edge = self.dual(planar_edge)
             
-            current_edge = self.replace_node(dual_edge, dual_node, new_node)[:2]
+            try:
+                current_edge = self.replace_node(dual_edge, dual_node, new_node)[:2]
+            except:
+                print("bug is now")
+                print(current, dual_edge, dual_node, new_node)
+                self.debug_all()
+                print(locals())
+                raise
             
             idx = self.D.add_edge(*current_edge, dual=planar_edge)
             new_edge = (*current_edge, idx)
@@ -345,67 +356,7 @@ class GrowingPlanarNetwork(PlanarNetwork):
         self.G.nodes[split_ngb_2]["ngb"].insert(idx_2 + 1, split_ngb_1)
         
         return new_node
-    
-    def _make_border_edge(self, node, min_pair):
-        dual_node = -1
-        
-        # A2 remove edge
-        crossing_pairs = [(node, min_pair[0]), (node, min_pair[1])]
-        self.D.remove_edge(*self.dual(crossing_pairs[0]))
-        self.D.remove_edge(*self.dual(crossing_pairs[1]))
-        
-        # division
-        new_node = self.index("dual")
-        self.D.add_node(new_node)
-        
-        split_ngb_1, split_ngb_2 = min_pair
-        current = split_ngb_1
 
-        self.D.nodes[new_node]["ngb"] = CircularList()
-        
-        # set up correct order
-        ngb = self.ngb(node)
-        if ngb.match_pattern(min_pair):
-            crossing_pairs = crossing_pairs[::-1]
-            split_ngb_1, split_ngb_2 = split_ngb_2, split_ngb_1
-        
-        elif ngb.match_pattern(min_pair[::-1]):
-            pass
-        
-        else:
-            raise ValueError(f"No match for {ngb} and {crossing_pairs}")
-            
-        for current, planar_edge in zip(min_pair, crossing_pairs):
-            dual_edge = self.dual(planar_edge)
-            
-            current_edge = self.replace_node(dual_edge, dual_node, new_node)[:2]
-            
-            idx = self.D.add_edge(*current_edge, dual=planar_edge)
-            new_edge = (*current_edge, idx)
-            
-            self.G.edges[planar_edge]["dual"] = new_edge
-            self.D.nodes[new_node]["ngb"].append(new_edge)
-            
-            dual_current = self.get_other_node(dual_edge, dual_node)
-            ls_to_update = self.D.nodes[dual_current]["ngb"]
-            
-            ls_to_update[index_of(dual_edge, ls_to_update)] = new_edge
-        
-        
-        idx = self.D.add_edge(dual_node, new_node)
-        inner_dual_edge = Ltuple((dual_node, new_node, idx))
-        self.D.nodes[dual_node]["ngb"].append(inner_dual_edge)
-        self.D.nodes[new_node]["ngb"].append(inner_dual_edge)
-        
-        self.G.add_edge(split_ngb_1, split_ngb_2, dual=inner_dual_edge)
-        self.D.edges[inner_dual_edge]["dual"] = (split_ngb_1, split_ngb_2)
-        
-        idx_1 = index_of(crossing_pairs[0][0], self.G.nodes[split_ngb_1]["ngb"])
-        self.G.nodes[split_ngb_1]["ngb"].insert(idx_1 + 1, split_ngb_2)
-        idx_2 = index_of(crossing_pairs[1][0], self.G.nodes[split_ngb_2]["ngb"])
-        self.G.nodes[split_ngb_2]["ngb"].insert(idx_2, split_ngb_1)
-        
-        return new_node
         
     def replace_node(self, edge, old, new):
         """
@@ -493,7 +444,7 @@ class GrowingPlanarNetwork(PlanarNetwork):
         nb_ngbs = len(ngb_edges)
         map_edge_pair = self.planar_cycle_pairs(node)
         ordered_cycle_pairs = cycle_from_ordered_list_pairs([map_edge_pair[x] for x in ngb_edges])
-        error = f"Uncorrect pattern in cycle {ordered_cycle_pairs}"
+        error = f"Uncorrect pattern in cycle {ordered_cycle_pairs} for node {node}"
         length = len(ordered_cycle_pairs)
         for i in range(1, length):
             self.check(ordered_cycle_pairs[i][0] == ordered_cycle_pairs[i - 1][1], error)
@@ -507,7 +458,7 @@ class GrowingPlanarNetwork(PlanarNetwork):
         nb_ngbs = len(ngb_edges)
         map_edge_pair = self.dual_cycle_pairs(node)
         ordered_cycle_pairs = cycle_from_ordered_list_pairs([map_edge_pair[x] for x in ngb_edges])
-        error = f"Uncorrect pattern in cycle {ordered_cycle_pairs}"
+        error = f"Uncorrect pattern in cycle {ordered_cycle_pairs} for node {node}"
         length = len(ordered_cycle_pairs)
         for i in range(1, length):    
             self.check(ordered_cycle_pairs[i][0] == ordered_cycle_pairs[i - 1][1], error)
@@ -584,7 +535,7 @@ class GrowingPlanarNetwork(PlanarNetwork):
         
             self._make_edge(dual_node, (source, target))
         
-    def remove_node(self, node, debug=False):
+    def remove_node(self, node):
         """
         In a remove node, we first connect all neighbours that are not
         A) for all ngb pairs, add edge if not exists
@@ -603,17 +554,85 @@ class GrowingPlanarNetwork(PlanarNetwork):
         # create connections between its neighbours
         for i in range(nb_ngbs):
             n_a, n_b = ngbs[i], ngbs[(i + 1) % nb_ngbs]
-            print(n_a, n_b)
             if not (n_a, n_b) in self.G.edges:
                 self.create_edge(n_a, n_b, ref_node=node)
             
         # remove the node and merge dual neighbours
-        if debug:
-            self.check_all()
-            self.debug_all()
-            self.show_all()
-        
+        # TMP inner check
+        self.check_all()
         self._remove_node(node)
+        
+    def _make_border_edge(self, node, min_pair):
+        dual_node = -1
+        # B5
+        if self.verbose:
+            print("Shorten", min_pair, "on", dual_node)
+        
+        
+        # A2 remove edge
+        crossing_pairs = [(node, min_pair[0]), (node, min_pair[1])]
+        print(min_pair, crossing_pairs)
+        self.D.remove_edge(*self.dual(crossing_pairs[0]))
+        self.D.remove_edge(*self.dual(crossing_pairs[1]))
+        
+        # division
+        new_node = self.index("dual")
+        self.D.add_node(new_node)
+        
+        split_ngb_1, split_ngb_2 = min_pair
+        current = split_ngb_1
+
+        # self.D.nodes[dual_node]["ngb"] = CircularList()
+        self.D.nodes[new_node]["ngb"] = CircularList()
+        
+        # set up correct order
+        ngb = self.ngb(node)
+        if ngb.match_pattern(min_pair):
+            crossing_pairs = crossing_pairs[::-1]
+            split_ngb_1, split_ngb_2 = split_ngb_2, split_ngb_1
+        
+        elif ngb.match_pattern(min_pair[::-1]):
+            pass
+        
+        else:
+            raise ValueError(f"No match for {ngb} and {crossing_pairs}")
+            
+        for current, planar_edge in zip(min_pair, crossing_pairs):
+            # planar_edge = map_ingb_pair[current]
+            dual_edge = self.dual(planar_edge)
+            
+            current_edge = self.replace_node(dual_edge, dual_node, new_node)[:2]
+            
+            idx = self.D.add_edge(*current_edge, dual=planar_edge)
+            new_edge = (*current_edge, idx)
+            
+            self.G.edges[planar_edge]["dual"] = new_edge
+            self.D.nodes[new_node]["ngb"].append(new_edge)
+            
+            dual_current = self.get_other_node(dual_edge, dual_node)
+            ls_to_update = self.D.nodes[dual_current]["ngb"]
+            
+            ls_to_update[index_of(dual_edge, ls_to_update)] = new_edge
+            
+            # current = ingbs.next(current)
+        
+        
+        idx = self.D.add_edge(dual_node, new_node)
+        inner_dual_edge = Ltuple((dual_node, new_node, idx))
+        self.D.nodes[dual_node]["ngb"].append(inner_dual_edge)
+        self.D.nodes[new_node]["ngb"].append(inner_dual_edge)  # not ok
+        # need to define the right order in the for loop THERE
+        
+        self.G.add_edge(split_ngb_1, split_ngb_2, dual=inner_dual_edge)
+        self.D.edges[inner_dual_edge]["dual"] = (split_ngb_1, split_ngb_2)
+        
+        # knowing the right order, there will be one next and one previous THERE
+        idx_1 = index_of(crossing_pairs[0][0], self.G.nodes[split_ngb_1]["ngb"])
+        self.G.nodes[split_ngb_1]["ngb"].insert(idx_1 + 1, split_ngb_2)  # to check
+        idx_2 = index_of(crossing_pairs[1][0], self.G.nodes[split_ngb_2]["ngb"])
+        self.G.nodes[split_ngb_2]["ngb"].insert(idx_2, split_ngb_1)  # to check
+        
+        return new_node
         
     def _remove_node(self, node):
         ingbs = self.get_intermediate_neighbours(node, net="planar")
@@ -626,11 +645,9 @@ class GrowingPlanarNetwork(PlanarNetwork):
         
         # create a function that reconstruct the future "ngb" of the merged node
         new_ingbs, old_edges = self._get_merged_neighbours(node, ingbs)
-        print("merged ngbs", new_ingbs, old_edges)
         
         # create this new merged node, remove others and change names in other "ngb"
         # arbitrarily take the highest index (also prevent taking -1)
-        # case is not handled for -1
         keeped_dual = min(ingbs)
                 
         # add edges to get their id
@@ -692,15 +709,11 @@ class GrowingPlanarNetwork(PlanarNetwork):
                         return y, x
             raise RuntimeError("Unable to find another node")
             
-        print("merged debug", node, ingbs)
-            
         for ingb in ingbs:
             if ingb == -1:
                 continue
             raw_ngbs = self.D.nodes[ingb]["ngb"]
-            print("<<<", raw_ngbs, ingbs, ingb)
             stranger, edge = get_stranger(raw_ngbs, ingbs)
-            print(">>>", stranger, edge, ingb)
             new_ingbs.append(stranger)
             old_edges.append(edge)
             
