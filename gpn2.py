@@ -142,6 +142,18 @@ class GrowingPlanarNetwork(PlanarNetwork):
     def set_cross_dual(self, edge_1, edge_2):
         self.set_dual(edge_1, edge_2)
         self.set_dual(edge_2, edge_1)
+        
+    def are_from_common_cycle(self, a, b, c):
+        """
+        Only for triangle cycles, otherwise it will likely raise an error 
+        because of unexisting edge
+        """
+        common_dual = set(self.dual((a, b))[:2]) \
+                              & set(self.dual((a, c))[:2]) \
+                              & set(self.dual((b, c))[:2]) \
+                              - {-1}
+        
+        return len(common_dual) == 1
     
     def duplicate_node(self, node):
         """
@@ -209,12 +221,10 @@ class GrowingPlanarNetwork(PlanarNetwork):
         second_dual_edge = Ltuple(cycle_dual[opp_split_ngb])
 
         if len(cycle_dual) >= 3:
-            print("GG3")
             # implicit, nope it is not ok at all
             first_dual, second_dual = first_dual_edge[0], second_dual_edge[0]
             
         elif len(cycle_dual) == 2:
-            print("GG2")
             assert min(first_dual_edge[:2]) == min(second_dual_edge[:2])
             assert max(first_dual_edge[:2]) == max(second_dual_edge[:2])
             # need to use the non -1 dual as an anchor
@@ -286,6 +296,8 @@ class GrowingPlanarNetwork(PlanarNetwork):
         # B5
         if self.verbose:
             print("Shorten", min_pair, "on", dual_node)
+            
+        Z = self.D.nodes[-1]["ngb"]
         
         # A1
         ngb_edges = self.D.nodes[dual_node]["ngb"]
@@ -319,6 +331,7 @@ class GrowingPlanarNetwork(PlanarNetwork):
             planar_edge = map_ingb_pair[current]
             dual_edge = self.dual(planar_edge)
             
+            # here id is not taken into consideration
             self.D.add_edge(*dual_edge, dual=planar_edge)
             self.D.nodes[dual_node]["ngb"].append(dual_edge)
             
@@ -332,9 +345,6 @@ class GrowingPlanarNetwork(PlanarNetwork):
             try:
                 current_edge = self.replace_node(dual_edge, dual_node, new_node)[:2]
             except:
-                print("bug is now")
-                print(current, dual_edge, dual_node, new_node)
-                self.debug_all()
                 print(locals())
                 raise
             
@@ -347,10 +357,14 @@ class GrowingPlanarNetwork(PlanarNetwork):
             dual_current = self.get_other_node(dual_edge, dual_node)
             ls_to_update = self.D.nodes[dual_current]["ngb"]
             
-            ls_to_update[index_of(dual_edge, ls_to_update)] = new_edge
+            try:
+                ls_to_update[index_of(dual_edge, ls_to_update)] = new_edge
+            except:
+                print(locals())
+                print(self.D.nodes[-1]["ngb"], Z)
+                raise
             
             current = ingbs.next(current)
-        
         
         idx = self.D.add_edge(dual_node, new_node)
         inner_dual_edge = Ltuple((dual_node, new_node, idx))
@@ -386,7 +400,7 @@ class GrowingPlanarNetwork(PlanarNetwork):
         Therefore we implement it
         """
         # sanity check
-        assert (node1, node2) in self.G.edges
+        assert (node1, node2) in self.G.edges, f"Trying to swap non-adjacent nodes {node1} and {node2}"
         
         ngb1, ngb2 = self.ngb(node1), self.ngb(node2)
         ngb1[ngb1.index(node2)] = node1
@@ -445,6 +459,16 @@ class GrowingPlanarNetwork(PlanarNetwork):
         
         else:
             raise ValueError(f"{node} is not in {edge}")
+            
+    def common_dual(self, edge_1, edge_2):
+        x = set(self.dual(edge_1)[:2]) & set(self.dual(edge_2)[:2]) - {-1}
+        if len(x) > 1:
+            raise ValueError(f"Found multiple common dual (non -1) "
+                             f"{x} for edges {edge_1} and {edge_2}")
+        elif len(x) == 0:
+            return None  # because -1 is in common normally
+        
+        return list(x)[0]
             
     def check_dual_ngb_consistency(self, node):
         if node not in self.D.nodes:
@@ -518,12 +542,22 @@ class GrowingPlanarNetwork(PlanarNetwork):
                     f"and dual ngb is {ngb_dual_node}"
                 assert ngb_dual_node.match_pattern([Ltuple(p2), Ltuple(p1)]), err_msg
                 
+    def check_void_doublet(self):
+        ls = self.ngb(-1, net="dual")
+        assert len(ls) == len(set(ls)), f"Doublets found in void ngb, {ls}"
+        
+    def check_void_ngbs(self):
+        for e in self.D.nodes[-1]["ngb"]:
+            assert e in self.D.edges, f"Error edge {e} is in ngbs of -1 but not in graph D"
+                
     def check_all(self):
         self.check_duality_consistency()
         self.check_ngbs_consistency()
         self.check_deep_ngb_consistency()
+        self.check_void_doublet()
+        self.check_void_ngbs()
             
-    def create_edge(self, source, target, ref_node=None):
+    def create_edge(self, source, target, ref_node=None, ref_dual_node=None):
         """
         Only for planar graph, not for dual
         """
@@ -532,18 +566,21 @@ class GrowingPlanarNetwork(PlanarNetwork):
         inter = list(set(graph_source) & set(graph_target) - set((-1,)))
         
         if len(inter) > 1:
-            warnings.warn(f"Careful for {source} and {target} "
+            if ref_dual_node is not None:
+                dual_node = ref_dual_node
+                
+            else:
+                raise RuntimeError("ref_dual_node shall not be None")
+                dual_node = inter[0]
+                warnings.warn(f"Careful for {source} and {target} "
                              f"because their neighbour are {graph_source} and "
                              f"{graph_target}")
-            
-            dual_node = inter[0]
         
             self._make_edge(dual_node, (source, target))
             
         elif len(inter) == 0:
-            # TBD but not that complicated
-            print("creating edge for", source, target)
             self._make_border_edge(ref_node, (source, target))
+            
         else:
             dual_node = inter[0]
         
@@ -558,14 +595,18 @@ class GrowingPlanarNetwork(PlanarNetwork):
         5 update duality
         6 replace in the ngb of others
         X might be ok
+        TODO here -1 ngb is disrupted
         """
         # 1
         dual_edge = Ltuple(self.dual(edge))
         dual_0, dual_1, _ = dual_edge
+        if dual_1 == -1:
+            dual_0, dual_1 = dual_1, dual_0
         
         # 2
         ngb_0 = self.ngb(dual_0, net="dual")
         ngb_1 = self.ngb(dual_1, net="dual")
+        # ls_0 = [] if (dual_0 == -1) else self.cycle_ngb(ngb_0, from_=dual_edge, to_=dual_edge)
         ls_0 = self.cycle_ngb(ngb_0, from_=dual_edge, to_=dual_edge)
         ls_1 = self.cycle_ngb(ngb_1, from_=dual_edge, to_=dual_edge)
         
@@ -593,6 +634,7 @@ class GrowingPlanarNetwork(PlanarNetwork):
         # 6
         self.ngb(edge[0]).remove(edge[1])
         self.ngb(edge[1]).remove(edge[0])
+        
         
     def remove_node(self, node):
         """
@@ -623,12 +665,18 @@ class GrowingPlanarNetwork(PlanarNetwork):
         # create connections between its neighbours
         for i in range(nb_ngbs):
             n_a, n_b = ngbs[i], ngbs[(i + 1) % nb_ngbs]
+
             if not (n_a, n_b) in self.G.edges:
-                self.create_edge(n_a, n_b, ref_node=node)
+                ref_dual_node = self.common_dual((node, n_a), (node, n_b))
+                self.create_edge(n_a, n_b, ref_dual_node=ref_dual_node, ref_node=node)
+                
+            # if edge but dual is not correct
+            elif not self.are_from_common_cycle(node, n_a, n_b):
+                self._remove_edge((n_a, n_b))
+                ref_dual_node = self.common_dual((node, n_a), (node, n_b))
+                self.create_edge(n_a, n_b, ref_dual_node=ref_dual_node, ref_node=node)
             
         # remove the node and merge dual neighbours
-        # TMP inner check
-        self.check_all()
         self._remove_node(node)
         
     def _quick_remove(self, node):
@@ -680,7 +728,6 @@ class GrowingPlanarNetwork(PlanarNetwork):
         
         # A2 remove edge
         crossing_pairs = [(node, min_pair[0]), (node, min_pair[1])]
-        print(min_pair, crossing_pairs)
         self.D.remove_edge(*self.dual(crossing_pairs[0]))
         self.D.remove_edge(*self.dual(crossing_pairs[1]))
         
@@ -722,9 +769,8 @@ class GrowingPlanarNetwork(PlanarNetwork):
             ls_to_update = self.D.nodes[dual_current]["ngb"]
             
             ls_to_update[index_of(dual_edge, ls_to_update)] = new_edge
-            
-            # current = ingbs.next(current)
-        
+            # shouldn't we remove the ngb of -1 ??
+            self.ngb(-1, net="dual").remove(Ltuple(dual_edge))
         
         idx = self.D.add_edge(dual_node, new_node)
         inner_dual_edge = Ltuple((dual_node, new_node, idx))
@@ -837,6 +883,6 @@ class GrowingPlanarNetwork(PlanarNetwork):
             map_edge_pair = self.dual_cycle_pairs(node)
         else:
             map_edge_pair = self.planar_cycle_pairs(node)
-        # print(node, map_edge_pair)
+
         ordered_cycle_pairs = cycle_from_ordered_list_pairs([map_edge_pair[x] for x in ngb_edges])
         return ordered_cycle_pairs

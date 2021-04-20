@@ -1,0 +1,15 @@
+This model introduces a third type of progenitor, the Glial Progenitor.
+It acts like a quiescent progenitor that does not divide here.
+
+There are four parameters
+Tc_IP : Time of cell cycle for IP
+Tc_RG : Time of cell cycle for RG
+Diff_IP : Probability of self renewing, otherwise differentiating to neuron, for IP
+Diff_RG_IP, Diff_RG_GP : Probability of self renewing is the first, probability of giving an IP is second - first,
+finally probability of giving a GP is 1 - second, for RG
+
+
+
+Tc was determined by TLV data but we did not make a difference between IP and RG.
+
+Diff were made from BiState model and simply adding a Diff_RG_GP term to fit the IP ratio in late neurogenesis

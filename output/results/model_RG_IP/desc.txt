@@ -1,0 +1,51 @@
+This model uses two types of progenitors, RG and IP.
+
+There are four parameters
+Tc_IP : Time of cell cycle for IP
+Tc_RG : Time of cell cycle for RG
+Diff_IP : Probability of self renewing, otherwise differentiating to neuron, for IP
+Diff_RG : Probability of self renewing, otherwise differentiating to IP, for RG
+
+
+Tc was determined by TLV data but we did not make a difference between IP and RG.
+
+Diff for both RG and IP was made arbitrarily, for RG we took previous diff values and
+we diminished them a bit because the second progenitor would increase effective
+self renewing value.
+
+For IP we took a small value compared to RG.
+
+The results fit well with the biological data of IP (Tbr2) ratio in the progenitor population.
+
+At the end it does not fit anymore, but it is likely due to the new differentiation path
+related to gliogenesis.
+
+Variance analysis :
+We used the model with standard parameters, and 16 cells at the beginning.
+We found a huge standard variation (900.4932875790913) and a mean of 3944.595 which is 22.8%
+
+With 36 cells at the beginning we end with
+We found a relatively lower standard variation (1411.7134329512487) and a mean of 9024.615 which is 15.6%
+
+With 64 cells a the beginning :
+Stantard variation (1975.8428617681113) for a mean (16510.16) which is 12.0%
+
+We arbitrarily estimate that a good compromise is 25 cells at the beginning, and a goal of 5% for 90%CI
+
+Robustness analysis :
+
+Coefficient of variation, define by dA/dB * B/A, where A is the number of final neuron
+and B is the evaluated parameter.
+
+We use a specific method for variating a proportion such that variation the proportion p
+by a factor C is the same as a the complement of the variation of the proportion p' = 1 - p
+by a factor C' = 1 / C
+
+
+We clearly that neuron number is influenced by Tc_RG and diff_RG but almost not but parameters of IP. And the sooner is the perturbation, the higher is the change (the lower is the robustness)
+
+Ratio of IP seems to be robust to all parameters, it is only influenced a bit for late perturbation. This also means that a drastic modification in the model is required in order to fit the biological IP ratio.
+
+Finally, we plotted a clone from an initial cell and figured out two things :
+- The lack of correlation between Tc of daughter and mother cell does not fit well with real data.
+- We see that often neurons are created by pairs, but in our data we see mainly asymetrical divisions for neurons

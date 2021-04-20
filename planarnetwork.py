@@ -13,6 +13,8 @@ class PlanarNetwork(BaseNetwork):
         self.D = nx.MultiGraph()  # dual graph
         self.ctrl = True
         self.verbose = False
+        self.__next_id_D = 0
+        self.__next_id_G = 0
         
     def copy(self):
         gpn = GrowingPlanarNetwork()
@@ -24,6 +26,19 @@ class PlanarNetwork(BaseNetwork):
     def index(self, net):
         G = self.G if net == "planar" else self.D
         return max(G.nodes) + 1
+        if net == "planar":
+            if self.__next_id_G <= max(self.G.nodes):
+                self.__next_id_G = max(self.G.nodes) + 1
+            x = self.__next_id_G
+            self.__next_id_G += 1
+            return x
+        
+        elif net == "dual":
+            if self.__next_id_D <= max(self.D.nodes):
+                self.__next_id_D = max(self.D.nodes) + 1
+            x = self.__next_id_D
+            self.__next_id_D += 1
+            return x
     
     def debug(self, d):
         if self.verbose:
