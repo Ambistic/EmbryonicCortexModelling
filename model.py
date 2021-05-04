@@ -8,7 +8,7 @@ import pandas as pd
 from utils import nop
 from numpy.random import choice
 from scipy.interpolate import splev, splrep, interp1d
-from gpn2 import GrowingPlanarNetwork
+from gpn4 import GrowingPlanarNetwork
 from collections import Counter
 from enum import Enum
 
@@ -74,9 +74,13 @@ class Brain:
 
         # internal var
         self.id_count = -1
+        self.range = np.arange(self.start_time, self.end_time, self.time_step)
+        self.lenrange = len(self.range)
+        self.current_step = 0
 
         # init
         self.gpn = GrowingPlanarNetwork()
+        self.init_mapping()
         self.initiate_population()
         self.init_stats()
 
@@ -96,6 +100,17 @@ class Brain:
 
     def set_reference_model(self, callback):
         self.reference_model_callback = callback
+        
+    def init_mapping(self):
+        self.mapping = {
+            Action.Divide: self.divide,
+            Action.Die: self.remove_cell,
+            Action.DiffNeuron: self.set_as_neuron,
+            Action.NoOp: nop,
+        }
+        
+    def set_swap(self):
+        self.mapping[Action.Divide] = self.divide_and_swap
 
     def initiate_population(self):
         self.gpn.init_square(self.start_population)
@@ -119,6 +134,16 @@ class Brain:
     def run(self):
         for T in np.arange(self.start_time, self.end_time, self.time_step):
             self._tick(T, self.time_step)
+            
+    def run_one_step(self):
+        if self.current_step >= self.lenrange:
+            print("Run is over")
+            return False
+        
+        T = self.range[self.current_step]
+        self._tick(T, self.time_step)
+        self.current_step += 1
+        return True
 
     def _tick(self, absolute_time, relative_time):
         self.debug(f"Ticking abs : {absolute_time}, step : {relative_time}")
@@ -150,14 +175,7 @@ class Brain:
     #################
 
     def run_action(self, action, cell, T):
-        mapping = {
-            Action.Divide: self.divide,
-            Action.Die: self.remove_cell,
-            Action.DiffNeuron: self.set_as_neuron,
-            Action.NoOp: nop,
-        }
-
-        mapping[action](cell, T)
+        self.mapping[action](cell, T)
 
     def divide(self, cell, T):
         """
@@ -166,10 +184,46 @@ class Brain:
         """
         self.debug("Duplicating " + str(cell.index) + " " + str(cell.gpn_id))
         new_gpn_id = self.gpn.duplicate_node(cell.gpn_id)
-        new_cell_1 = cell.generate_daughter_cell(T, index=self.new_cell_id(),
+        time_ = cell.appear_time + cell.eff_Tc
+        # time_ = T
+        new_cell_1 = cell.generate_daughter_cell(time_, index=self.new_cell_id(),
                 gpn_id=new_gpn_id)
-        new_cell_2 = cell.generate_daughter_cell(T, index=self.new_cell_id(),
+        new_cell_2 = cell.generate_daughter_cell(time_, index=self.new_cell_id(),
                 gpn_id=cell.gpn_id)
+        if self.check:
+            self.gpn.check_all()
+
+        self.register_cell(new_cell_1)
+        self.register_cell(new_cell_2)
+        
+    def divide_and_swap(self, cell, T):
+        """
+        Warning : the id of one daughter is the same as for the mother
+        We will have to modify the gpn code to overcome that
+        """
+        self.debug("Duplicating " + str(cell.index) + " " + str(cell.gpn_id))
+        new_gpn_id = self.gpn.duplicate_node(cell.gpn_id)
+        
+        # select random neighbour then swap with it
+        set_ngb = set(self.gpn.ngb(new_gpn_id)) - {cell.gpn_id}
+        pick_ngb_1 = random.choice(set_ngb)
+        self.gpn.swap_node(pick_ngb_1, new_gpn_id)
+        
+        # 2nd
+        set_ngb = set(self.gpn.ngb(cell.gpn_id)) - {new_gpn_id}
+        pick_ngb_2 = random.choice(set_ngb)
+        self.gpn.swap_node(pick_ngb_2, cell.gpn_id)
+        
+        
+        time_ = cell.appear_time + cell.eff_Tc
+        ngbs1 = self.get_neighbours_from_gpn_id(new_gpn_id, exclude=[cell.gpn_id])
+        ngbs2 = self.get_neighbours_from_gpn_id(cell.gpn_id, exclude=[new_gpn_id])
+        
+        new_cell_1 = cell.generate_daughter_cell(time_, index=self.new_cell_id(),
+                gpn_id=new_gpn_id, neighbours=ngbs1)
+        new_cell_2 = cell.generate_daughter_cell(time_, index=self.new_cell_id(),
+                gpn_id=cell.gpn_id, neighbours=ngbs2)
+        
         if self.check:
             self.gpn.check_all()
 
@@ -198,6 +252,11 @@ class Brain:
 
     def get_neighbours(self, cell):
         ngbs = self.gpn.ngb(cell.gpn_id)
+        return [self.population[self.gpn_population[i]] for i in ngbs]
+    
+    def get_neighbours_from_gpn_id(self, gpn_id, exclude=[]):
+        ngbs = self.gpn.ngb(cell.gpn_id)
+        ngbs = list(set(ngbs) - set(exclude))
         return [self.population[self.gpn_population[i]] for i in ngbs]
 
     def new_cell_id(self):
@@ -260,7 +319,7 @@ class Brain:
 
 class AbstractCell:
     def __init__(self, T, start=False, brain=None, index=None, gpn_id=None,
-            parent=None):
+            parent=None, **kwargs):
         self.brain = brain
         self.submodel = None
 
@@ -294,7 +353,7 @@ class AbstractCell:
     def type(self):
         return self._type
 
-    def generate_daughter_cell(self, T, index, gpn_id=None):
+    def generate_daughter_cell(self, T, index, gpn_id=None, **kwargs):
         if gpn_id is None:
             gpn_id = self.gpn_id
 
@@ -302,4 +361,4 @@ class AbstractCell:
 
         return type(self)(T, start=False, brain=self.brain, index=index,
                 gpn_id=gpn_id, parent=self.index, submodel=self.submodel,
-                parent_type=self.type())
+                parent_type=self.type(), **kwargs)

@@ -5,6 +5,8 @@ import numpy as np
 from scipy.interpolate import interp1d
 from numpy.random import choice
 from utils import highest_lower
+
+SIG_TC = 12.5
     
 class CellTypeGP(Enum):
     RG = 0
@@ -22,7 +24,9 @@ class CellTriStateBasic(AbstractCell):
     Tuning this model will require to have the proportion of Tbr2+ and Tbr2-
     in the progenitor population.
     """
-    def __init__(self, T, start=False, brain=None, index=None, parent_type=None, submodel=None):
+    def __init__(self, T, start=False, brain=None, index=None, parent_type=None, submodel=None,
+                **kwargs):
+        super().__init__(self, T, **kwargs)
         # references
         self.brain = brain
         self.submodel = submodel
@@ -61,7 +65,7 @@ class CellTriStateBasic(AbstractCell):
     def __gt__(self, C):
         return self.division_time > C.division_time
     
-    def generate_daughter_cell(self, T):
+    def ___generate_daughter_cell(self, T):
         return CellTriStateBasic(T, start=False, brain=self.brain, parent_type=self.type(),
                                 submodel=self.submodel)
     

@@ -1,5 +1,6 @@
 from ete3 import Tree, NodeStyle
 from collections import Counter
+import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 
@@ -62,15 +63,20 @@ def df_cells(pop):
     return pd.DataFrame({"cell": index, "appear_time": times, "type": types})
 
 
-def progeny_along_time(brain, _type="RG", only_leaves=True):
+def progeny_along_time(brain, _type="RG", only_leaves=True, bins=20):
     df = df_cells(brain.population)
     
     ret_df = pd.DataFrame()
     
-    times = sorted(df["appear_time"].unique())
-    for T in times:
+    min_time = min(df["appear_time"])
+    max_time = max(df["appear_time"])
+    
+    step = (max_time - min_time) / bins
+    
+    for T in np.arange(min_time, max_time, step):
         count_T = Counter()
-        df_T = df[(df["appear_time"] == T) & (df["type"] == _type)]
+        df_T = df[(df["appear_time"] >= T) &
+                  (df["appear_time"] < (T + step)) & (df["type"] == _type)]
         N = len(df_T)
         if not N:
             continue
@@ -79,10 +85,22 @@ def progeny_along_time(brain, _type="RG", only_leaves=True):
             progeny = count_total_progeny(cell["cell"], brain, only_leaves=only_leaves)
             count_T.update(progeny)
             
-        new_row = dict(count_T)
+        new_row = {k: v / N for k, v in dict(count_T).items()}
         new_row["time"] = T
         ret_df = ret_df.append(new_row, ignore_index=True)
         
     ret_df = ret_df.fillna(0.0)
         
     return ret_df
+
+def plot_progeny(progeny):
+    plt.figure(figsize=(12, 8))
+    types = set(progeny.columns) - {"time"}
+    
+    cum = 0
+    for t_ in types:
+        plt.plot(progeny["time"], cum + progeny[t_])
+        plt.fill_between(progeny["time"], cum, cum + progeny[t_], label=t_)
+        cum += progeny[t_]
+        
+    plt.legend()

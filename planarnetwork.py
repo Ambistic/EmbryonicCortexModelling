@@ -93,3 +93,9 @@ class PlanarNetwork(BaseNetwork):
         self.print_nodes(dual=False)
         self.print_edges(dual=True)
         self.print_nodes(dual=True)
+        
+    def perimeter(self):
+        return self.D.degree(-1)
+        
+    def density(self):
+        return self.G.number_of_nodes() / self.perimeter()**2

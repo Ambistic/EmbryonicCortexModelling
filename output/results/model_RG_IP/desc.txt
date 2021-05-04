@@ -49,3 +49,41 @@ Ratio of IP seems to be robust to all parameters, it is only influenced a bit fo
 Finally, we plotted a clone from an initial cell and figured out two things :
 - The lack of correlation between Tc of daughter and mother cell does not fit well with real data.
 - We see that often neurons are created by pairs, but in our data we see mainly asymetrical divisions for neurons
+
+
+Deep Tc analysis :
+We aimed to check if the model did fit data such as correlation of Tc in a lineage.
+
+We used 3 metrics :
+- Ratio of progeny pairs (2 cycling, 1 cycling + 1 pm, 2pm)
+- Correlation of Tc between cell daughters, and between mother and daughter
+- Mean Tc increase
+
+We always divide the cells into two groups, group 2 below E75 and group 3 above E75.
+
+Progeny pairs :
+For group 2, data was not sufficient.
+For group 3, we saw that the data showed way more cycling daughter than expected. We considered that this was due to the difficulty of
+classifying and added of probability of NOT putting NA for a PM, Pd. We then tried to fit a independant daughter model
+with param Pc = probability of giving a cycling daughter. (Independant means that D2 fate does not depend on D1 fate).
+
+As a result, the model gave 821 double cycling, 646 1 + 1, and 975 double pm.
+The data was 43 double cycling, 14 1 + 1, and 7 double pm.
+
+Basically, the model can be fitted using Pd = 0.4
+This gives 43 double cycling, 35 1 + 1 and 44 double pm, which fits the agent-based model in terms of ratio.
+
+
+Correlation in Tc :
+We found in the data that there were no correlation between mother and daughter cells.
+But between two daughter cell, we found some correlation (~0.20).
+The exact same result were found in the model, which do not consider any link inside a clone, except time.
+Therefore, we can hypothesize that time is the only relevant factor for the duration of cell cycle, and
+it artificially brings a correlation.
+
+
+Mean Tc increase :
+We found a mean Tc increase of 1.08 both in the data and in the model.
+Interestingly, we found that metric were biased because mean of the inverse was also 1.08. Therefore this metric is respected in the model
+but does not reveal an augmentation.
+
