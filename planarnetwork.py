@@ -99,3 +99,133 @@ class PlanarNetwork(BaseNetwork):
         
     def density(self):
         return self.G.number_of_nodes() / self.perimeter()**2
+    
+    def sides(self, node):
+        return self.G.nodes[node].get("side", set())
+    
+    def ngb(self, node, net="planar"):
+        G = self.G if net == "planar" else self.D
+        return G.nodes[node]["ngb"]
+    
+    def set_ngb(self, node, ngb, net="planar"):
+        G = self.G if net == "planar" else self.D
+        G.nodes[node]["ngb"] = CircularList(ngb)
+        
+    # helpers (to use at the end to simplify the code)
+    def dual(self, edge):
+        if len(edge) == 2:
+            return self.G.edges[edge]["dual"]
+        
+        elif len(edge) == 3:
+            return self.D.edges[edge]["dual"]
+        
+        else:
+            raise ValueError(f"edge not recognised : {edge}")
+            
+    def set_dual(self, edge, dual):
+        if len(edge) == 2 and len(dual) == 3:
+            self.G.edges[edge]["dual"] = Ltuple(dual)
+        
+        elif len(edge) == 3 and len(dual) == 2:
+            self.D.edges[edge]["dual"] = Ltuple(dual)
+        
+        else:
+            raise ValueError(f"edges not recognised or did not match : {edge}, {dual}")
+            
+    def is_border_node(self, node):
+        return (-1 in self.get_intermediate_neighbours(node))
+    
+    def is_border_edge(self, edge):
+        return (-1 in self.dual(edge))
+    
+    def corrected_degree(self, node):
+        return self.G.degree(node) + len(self.sides(node))
+            
+
+class CheckerPlanarNetwork(PlanarNetwork):
+    def check_dual_ngb_consistency(self, node):
+        if node not in self.D.nodes:
+            return
+        
+        ngb_edges = self.D.nodes[node]["ngb"]
+        nb_ngbs = len(ngb_edges)
+        map_edge_pair = self.planar_cycle_pairs(node)
+        ordered_cycle_pairs = cycle_from_ordered_list_pairs([map_edge_pair[x] for x in ngb_edges])
+        error = f"Uncorrect pattern in cycle {ordered_cycle_pairs} for node {node}"
+        length = len(ordered_cycle_pairs)
+        for i in range(1, length):
+            self.check(ordered_cycle_pairs[i][0] == ordered_cycle_pairs[i - 1][1], error)
+        self.check(ordered_cycle_pairs[0][0] == ordered_cycle_pairs[length - 1][1], error)
+            
+    def check_planar_ngb_consistency(self, node):
+        if node not in self.G.nodes:
+            return
+        
+        ngb_edges = self.G.nodes[node]["ngb"]
+        nb_ngbs = len(ngb_edges)
+        map_edge_pair = self.dual_cycle_pairs(node)
+        ordered_cycle_pairs = cycle_from_ordered_list_pairs([map_edge_pair[x] for x in ngb_edges])
+        error = f"Uncorrect pattern in cycle {ordered_cycle_pairs} for node {node}"
+        length = len(ordered_cycle_pairs)
+        for i in range(1, length):    
+            self.check(ordered_cycle_pairs[i][0] == ordered_cycle_pairs[i - 1][1], error)
+        self.check(ordered_cycle_pairs[0][0] == ordered_cycle_pairs[length - 1][1], error)
+    
+    def check_duality_consistency(self):
+        for *e, d in self.G.edges(data=True):
+            d_e = d["dual"]
+            dd_e = self.D.edges[d_e]["dual"]
+            try:
+                assert Ltuple(dd_e) == Ltuple(e)
+            except:
+                raise ValueError(f"{dd_e} is not equal to {e} in G graph")
+        
+        for *e, d in self.D.edges(data=True, keys=True):
+            d_e = d["dual"]
+            dd_e = self.G.edges[d_e]["dual"]
+            try:
+                assert Ltuple(dd_e) == Ltuple(e)
+            except:
+                raise ValueError(f"{dd_e} is not equal to {e} in D graph")
+    
+    def check_ngbs_consistency(self):
+        for n in self.G.nodes:
+            self.check_planar_ngb_consistency(n)
+            
+        for n in self.D.nodes:
+            if n == -1:
+                continue
+            self.check_dual_ngb_consistency(n)
+            
+    def check_deep_ngb_consistency(self):
+        for n in self.G.nodes:
+            cycle = self.get_cycle_pairs(n)
+            if len(cycle) == 2:
+                continue  # nothing to check more than in check_ngbs_consistency
+            
+            for i in range(len(cycle)):
+                # for each pair, we must check that the common node has the same pattern
+                p1, p2 = cycle[i], cycle[(i + 1) % len(cycle)]
+                node = p1[1]  # also p2[0]
+                if node == -1:
+                    continue
+                # exception for -1
+                ngb_dual_node = self.ngb(node, net="dual")
+                err_msg = f"Order is not correct for {n} with dual {node}. Cycle is {cycle} " \
+                    f"and dual ngb is {ngb_dual_node}"
+                assert ngb_dual_node.match_pattern([Ltuple(p2), Ltuple(p1)]), err_msg
+                
+    def check_void_doublet(self):
+        ls = self.ngb(-1, net="dual")
+        assert len(ls) == len(set(ls)), f"Doublets found in void ngb, {ls}"
+        
+    def check_void_ngbs(self):
+        for e in self.D.nodes[-1]["ngb"]:
+            assert e in self.D.edges, f"Error edge {e} is in ngbs of -1 but not in graph D"
+                
+    def check_all(self):
+        self.check_duality_consistency()
+        self.check_ngbs_consistency()
+        self.check_deep_ngb_consistency()
+        self.check_void_doublet()
+        self.check_void_ngbs()
