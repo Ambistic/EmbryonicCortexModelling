@@ -171,8 +171,16 @@ class CircularList(list):
 
     def next(self, value):
         return self[self.index(value) + 1]
+    
+    def prev(self, value):
+        return self[self.index(value) - 1]
 
     def match_pattern(self, pattern: list):
+        """
+        Return True if pattern matches in the same order
+        e.g. [1, 2, 3] for [3, 4, 6, 1, 2] returns True
+        [1, 4, 2] for [1, 2, 4] returns False
+        """
         if len(pattern) == 0:
             return True
 
@@ -185,7 +193,6 @@ class CircularList(list):
             test = comp
 
         for i in range(len(pattern)):
-
             if not test(pattern[i], current):
                 return False
             current = self.next(current)
