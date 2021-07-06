@@ -8,7 +8,7 @@ seed = 1
 random.seed(seed)
 np.random.seed(seed)
 gpn = GrowingPlanarNetwork()
-gpn.init_square(6)
+gpn.init_tissue(6)
 
 def p_dupl():
     return np.random.random() > 0.48
@@ -21,10 +21,10 @@ for i in range(300):
     # gpn.check_all()
     if p_dupl():
         ratio += 1
-        gpn.duplicate_random_node()
+        gpn.duplicate_random()
     else:
         ratio -= 1
-        gpn.remove_random_node()
+        gpn.destroy_random()
 
     if i % 100 == 0:
         print()

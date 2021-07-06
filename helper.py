@@ -88,7 +88,7 @@ def cycle_two_pairs(ls_p):
     return list(map(tuple, ls))
 
 
-def cycle_from_ordered_list_pairs_(ls_p):
+def cycle_from_ordered_list_pairs_old(ls_p):
     """
     The case where len(ls_p) == 2 is not handled
     How to know which one is the first ?
@@ -103,6 +103,25 @@ def cycle_from_ordered_list_pairs_(ls_p):
 
     for i in range(1, len(ls)):
         if ls[i][1] in ls[i - 1][:2]:
+            ls[i][0], ls[i][1] = ls[i][1], ls[i][0]
+
+    return list(map(tuple, ls))
+
+def cycle_from_ordered_list_pairs_(ls_p):
+    """
+    The case where len(ls_p) == 2 is not handled
+    How to know which one is the first ?
+    Let's say it doesn't matter
+    """
+    if len(ls_p) == 2:
+        return cycle_two_pairs(ls_p)
+
+    ls = list(map(list, ls_p))
+    if ls[0][0] in ls[1][:2]:
+        ls[0][0], ls[0][1] = ls[0][1], ls[0][0]
+
+    for i in range(1, len(ls)):
+        if ls[i][1] == ls[i - 1][1]:
             ls[i][0], ls[i][1] = ls[i][1], ls[i][0]
 
     return list(map(tuple, ls))
@@ -168,9 +187,15 @@ class CircularList(list):
         if step is None:
             step = 1
         return range(start, stop, step)
+    
+    def copy(self):
+        return CircularList(self)
 
     def next(self, value):
         return self[self.index(value) + 1]
+    
+    def next_id(self, idx):
+        return (idx + 1) % len(self)
     
     def prev(self, value):
         return self[self.index(value) - 1]

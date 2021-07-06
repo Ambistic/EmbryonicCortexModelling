@@ -392,14 +392,15 @@ class GrowingPlanarNetwork(CheckerPlanarNetwork):
 
         split_ngb_1, split_ngb_2 = min_pair
         current = split_ngb_1
+        c_idx = ingbs.index(current)
 
         self.D.nodes[dual_node]["ngb"] = CircularList()
         self.D.nodes[new_node]["ngb"] = CircularList()
 
-        assert len(set(ingbs)) == len(ingbs), (
-            f"Error found pair in {ingbs} with "
-            f"{map_edge_pair} and {ordered_cycle_pairs}"
-        )
+        # assert len(set(ingbs)) == len(ingbs), (
+        #     f"Error found pair in {ingbs} with "
+        #     f"{map_edge_pair} and {ordered_cycle_pairs}"
+        # )
 
         assert split_ngb_2 in ingbs, (
             f"Error couldn't find {split_ngb_2} in {ingbs} with "
@@ -414,7 +415,9 @@ class GrowingPlanarNetwork(CheckerPlanarNetwork):
             self.D.add_edge(*dual_edge, dual=planar_edge)
             self.D.nodes[dual_node]["ngb"].append(dual_edge)
 
-            current = ingbs.next(current)
+            c_idx = ingbs.next_id(c_idx)
+            current = ingbs[c_idx]
+            # current = ingbs.next(current)
 
         assert split_ngb_1 in ingbs, (
             f"Error couldn't find {split_ngb_2} in {ingbs} with "
@@ -446,7 +449,9 @@ class GrowingPlanarNetwork(CheckerPlanarNetwork):
                 print(self.D.nodes[-1]["ngb"], Z)
                 raise
 
-            current = ingbs.next(current)
+            c_idx = ingbs.next_id(c_idx)
+            current = ingbs[c_idx]
+            # current = ingbs.next(current)
 
         idx = self.D.add_edge(dual_node, new_node)
         inner_dual_edge = Ltuple((dual_node, new_node, idx))

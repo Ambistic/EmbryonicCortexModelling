@@ -122,7 +122,6 @@ class GrowingPlanarNetwork(CheckerPlanarNetwork):
         for ngb in ngbs:
             ls_pairs.append(self.G.edges[(node, ngb)]["dual"])
         ls_pairs = cycle_from_ordered_list_pairs(ls_pairs)
-        self.debug(locals())
         return {ngb: pair for ngb, pair in zip(ngbs, ls_pairs)}
     
     def planar_cycle_pairs(self, node):
@@ -320,7 +319,6 @@ class GrowingPlanarNetwork(CheckerPlanarNetwork):
             edge = (other_node, node)
             
             if -1 in self.dual(edge):
-                self.debug({"Warn": "Stabilization tried to occur on border edge"})
                 return  # avoid removing border edge
             
             self._remove_edge(edge)

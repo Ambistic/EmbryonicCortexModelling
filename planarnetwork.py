@@ -19,10 +19,11 @@ class PlanarNetwork(BaseNetwork):
         self.__next_id_G = 0
 
     def copy(self):
-        gpn = GrowingPlanarNetwork()
+        gpn = type(self)()
         gpn.G = self.G.copy()
         gpn.D = self.D.copy()
         gpn.ctrl = self.ctrl
+        gpn.debug = self.debug
         return gpn
 
     def index(self, net):
@@ -171,6 +172,7 @@ class CheckerPlanarNetwork(PlanarNetwork):
             [map_edge_pair[x] for x in ngb_edges]
         )
         error = f"Uncorrect pattern in cycle {ordered_cycle_pairs} for node {node}"
+        error += f"with {map_edge_pair} and {ngb_edges}"
         length = len(ordered_cycle_pairs)
         for i in range(1, length):
             self.check(
@@ -242,3 +244,7 @@ class CheckerPlanarNetwork(PlanarNetwork):
         self.check_deep_ngb_consistency()
         self.check_void_doublet()
         self.check_void_ngbs()
+
+    def check_all_if_debug(self):
+        if self.debug:
+            self.check_all()
