@@ -32,10 +32,11 @@ class Submodels:
     This class implements all parameters that are required, also under the callback form
     """
 
-    def __init__(self, Tc_func, diff_func, repr_=None):
+    def __init__(self, Tc_func, diff_func, repr_=None, start_diff=None):
         self.Tc = Tc_func
         self.diff = diff_func
         self.repr_ = repr_
+        self.start_diff = start_diff
 
     def show(self):
         if self.repr_:
@@ -58,10 +59,12 @@ class Brain:
         sig_tc=SIG_TC,
         cell_cls=None,
         verbose=False,
+        silent=False,
         check=False,
     ):
         # debug args
         self.verbose = verbose
+        self.silent = silent
         self.check = check
 
         # model params
@@ -80,6 +83,7 @@ class Brain:
 
         # init
         self.gpn = GrowingPlanarNetwork()
+        self.snapshots = {}
         self.init_mapping()
         self.initiate_population()
         self.init_stats()
@@ -96,6 +100,10 @@ class Brain:
 
     def debug(self, x):
         if self.verbose:
+            print(x)
+            
+    def info(self, x):
+        if not self.silent:
             print(x)
 
     def set_reference_model(self, callback):
@@ -133,7 +141,9 @@ class Brain:
 
     def run(self):
         for T in np.arange(self.start_time, self.end_time, self.time_step):
-            self._tick(T, self.time_step)
+            if not self._tick(T, self.time_step):
+                print("Not enough cells anymore")
+                return
             
     def run_one_step(self):
         if self.current_step >= self.lenrange:
@@ -146,15 +156,21 @@ class Brain:
         return True
 
     def _tick(self, absolute_time, relative_time):
-        self.debug(f"Ticking abs : {absolute_time}, step : {relative_time}")
+        self.info(f"Ticking abs : {absolute_time}, step : {relative_time}")
         self._sanity_check()
 
         # take care of cells
         for C_id in list(self.gpn_population.values()):
+            if len(self.gpn_population) < (self.start_population**2 / 2):
+                return False
             C = self.population[C_id]
             neighbours = self.get_neighbours(C)
             action = C.tick(absolute_time, relative_time, neighbours)
-            self.run_action(action, C, absolute_time)
+            try:
+                self.run_action(action, C, absolute_time)
+            except:
+                print(len(self.gpn_population))
+                raise
 
         # monitor
         stats = dict(
@@ -165,6 +181,8 @@ class Brain:
         )
 
         self.add_stat_time(absolute_time, stats)
+        self.add_snapshot(absolute_time)
+        return True
 
     def _sanity_check(self):
         if len(self.population) > 1e5:
@@ -252,22 +270,42 @@ class Brain:
 
     def get_neighbours(self, cell):
         ngbs = self.gpn.ngb(cell.gpn_id)
-        return [self.population[self.gpn_population[i]] for i in ngbs]
+        try:
+            return [self.population[self.gpn_population[i]] for i in ngbs]
+        except:
+            print("DEBUG")
+            print(len(self.population), self.gpn_population, cell.gpn_id, ngbs)
+            raise
     
     def get_neighbours_from_gpn_id(self, gpn_id, exclude=[]):
         ngbs = self.gpn.ngb(cell.gpn_id)
         ngbs = list(set(ngbs) - set(exclude))
         return [self.population[self.gpn_population[i]] for i in ngbs]
+    
+    def get_ngbs_types(self, gpn_id):
+        ls_types = []
+        ngbs = self.gpn.ngb(gpn_id)
+        for ngb in ngbs:
+            if ngb in self.gpn_population:
+                ls_types.append(self.population[self.gpn_population[ngb]].type())
+       
+        return ls_types
 
     def new_cell_id(self):
         self.id_count += 1
         return self.id_count
+    
+    def cell_from_gpn_id(self, gpn_id):
+        return self.population[self.gpn_population[gpn_id]]
 
     ##################
     ### STATISTICS ###
     ##################
 
     def init_stats(self):
+        self.stats = pd.DataFrame({})
+        
+    def init_stats_old(self):
         self.stats = pd.DataFrame(
             {
                 "progenitor_pop_size": [self.start_population],
@@ -290,6 +328,9 @@ class Brain:
             d["size_type_" + str(k.name)] = vv
 
         return d
+    
+    def add_snapshot(self, t):
+        self.snapshots[t] = self.gpn.export()
 
     def show_end_curve(self, df_pop):
         xspace = range(int(self.start_time), int(self.end_time) + 1)

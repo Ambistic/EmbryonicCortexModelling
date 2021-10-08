@@ -84,10 +84,26 @@ class RelaxAction:
         return f"RelaxAction : {self.name} with {self.args}, pattern is {self.pattern} : {self.score}"
     
 class RelaxableGPN(GrowingPlanarNetwork):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, callback=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.last_action = None
         self.trials = list()
+        self.counter = 0
+        self._callback = callback
+        
+    def copy(self):
+        gpn = super().copy()
+        gpn._callback = self._callback
+            
+        return gpn
+        
+    def callback(self):
+        if self._callback:
+            self._callback(self)
+        
+    def print_counter(self):
+        if self.counter % 1000 == 0:
+            print(f"Counter at {self.counter}")
         
     def init_tissue(self, size=3):
         super().init_tissue(size=size)
@@ -128,6 +144,14 @@ class RelaxableGPN(GrowingPlanarNetwork):
         else:
             if "side" in self.G.nodes[node]:
                 del self.G.nodes[node]["side"]
+                
+    def diffuse_border_ngb(self, node):
+        if not self.is_border_node(node):
+            return
+        
+        for ngb in self.get_border_neighbours(node):
+            if len(self.sides(ngb)) == 0:
+                self.diffuse_border(ngb)
     
     def update_corner(self, node):
         if self.is_border_node(node):
@@ -138,17 +162,29 @@ class RelaxableGPN(GrowingPlanarNetwork):
             
             if len(side1 & side2) == 0:
                 self.G.nodes[ngb1]["side"] = side1 | side2
+                if len(side1 | side2) == 3:
+                    print("FAIL 1", side1, side2, ngb1, ngb2)
+                    raise RuntimeError()
             
     # TODO override duplicate to set the border (NSEW)
     def duplicate(self, node):
+        self.counter += 1
+        self.print_counter()
         new_node = super().duplicate(node)
         self.diffuse_border(new_node)
-            
+        self.callback()
+        return new_node
     
     # TODO override remove to check for corners
     def destroy(self, node):
+        self.counter += 1
+        self.print_counter()
         self.update_corner(node)
+        ngbs = list(self.ngb(node))
         super().destroy(node)
+        for ngb in ngbs:
+            self.diffuse_border_ngb(ngb)  # because of the remove + create trick in the destroy
+        self.callback()
     
     def edge_swapper(self):
         pass
@@ -156,12 +192,19 @@ class RelaxableGPN(GrowingPlanarNetwork):
     def update_all_dist(self):
         for direction in "NESW":
             self.update_dist(direction=direction)
+            
+    def update_all_dist_for_action(self, action):
+        for direction in "NESW":
+            self.update_dist_for_action(action, direction=direction)
         
     def mean_NS(self):
         return np.mean([self.G.nodes[n]["dist_N"] + self.G.nodes[n]["dist_S"] for n in self.G.nodes])
     
     def mean_EW(self):
         return np.mean([self.G.nodes[n]["dist_E"] + self.G.nodes[n]["dist_W"] for n in self.G.nodes])
+    
+    def update_dist_for_action(self, action, direction="N"):
+        pass
     
     def update_dist(self, direction="N"):
         """
@@ -199,7 +242,7 @@ class RelaxableGPN(GrowingPlanarNetwork):
     def show_dist(self, k=5, iterations=1000, figsize=(10, 10), pos=None, hl_nodes=[],
                  print_dist=True):
         # green for NS, red for EW
-        plt.figure(figsize=figsize)
+        fig = plt.figure(figsize=figsize)
         if not pos:
             pos = nx.spring_layout(self.G, k=k, iterations=iterations)
         green = lambda x: format(max(0, 255 - (x["dist_N"] + x["dist_S"]) * 20), '02x')
@@ -235,6 +278,7 @@ class RelaxableGPN(GrowingPlanarNetwork):
                     
         
         nx.draw_networkx(self.G, pos, node_color=colors)
+        return fig
                 
     def _get_border_candidates(self, node):
         assert self.is_border_node(node)
@@ -246,7 +290,7 @@ class RelaxableGPN(GrowingPlanarNetwork):
         assert dual_node != -1, "Operation not allowed for dual -1"
         return [ngb for ngb in 
                 self.get_intermediate_neighbours(dual_node, net="dual")
-                if ngb != node]
+                if (ngb != node and (ngb, node) not in self.G.edges)]
     
     def _get_common_border_ngb(self, n_a, n_b):
         s_a = set(self.get_border_neighbours(n_a))
@@ -353,7 +397,7 @@ class RelaxableGPN(GrowingPlanarNetwork):
         
         # list all possible actions
         action_candidates = list()
-        for pt in candidates[:10]:
+        for pt in candidates[:5]:
             for action in self.enumerate_actions(pt):
                 self.estimate_action(action, mean_NS, mean_EW)
                 action_candidates.append(action)
@@ -362,7 +406,7 @@ class RelaxableGPN(GrowingPlanarNetwork):
                 
         action_candidates.sort(reverse=True)
         
-        for action in action_candidates[:20]:
+        for action in action_candidates[:3]:
             self.try_action(action)
             
         self.keep_best_trial()
@@ -467,9 +511,16 @@ class RelaxableGPN(GrowingPlanarNetwork):
         action.score = score
     
     def try_action(self, action):
-        gpn = self.copy()
-        gpn.run_action(action)
-        self.trials.append(gpn)
+        try:
+            gpn = self.copy()
+            gpn.run_action(action)
+            
+        except:
+            pass
+            # print(f"Action {action} failed")
+            
+        else:
+            self.trials.append(gpn)
     
     def run_action(self, action):
         func = self.get_func_action(action.name)
@@ -480,8 +531,9 @@ class RelaxableGPN(GrowingPlanarNetwork):
         # a bit ugly but should work
         best = min(self.trials + [self], key=lambda x: x.get_main_metric(update=True))
         self.trials.clear()
-        print(f"Action ran : {best.last_action}")
-        self.__dict__ = best.__dict__  # maybe use __dict__
+        # print(f"Action ran : {best.last_action}")
+        self.__dict__ = best.__dict__
+        self.callback()
     
     def get_all_dists(self):
         l_NS, l_EW, l_both = list(), list(), list()
@@ -503,7 +555,9 @@ class RelaxableGPN(GrowingPlanarNetwork):
         lA, lB, lC = self.get_all_dists()
         # xA, xB, xC = np.std(lA) / np.mean(lA), np.std(lB) / np.mean(lB), np.std(lC) / np.mean(lC)
         xA, xB, xC = std4(lA), std4(lB), std4(lC)
-        return xA + xB + xC
+        correctorA = np.sum(np.array(lA) < 4) * 1e3 + np.sum(np.array(lA) < 3) * 1e5
+        correctorB = np.sum(np.array(lB) < 4) * 1e3 + np.sum(np.array(lB) < 3) * 1e5
+        return xA + xB + xC + correctorA + correctorB
     
     def print_dist_metrics(self):
         lA, lB, lC = self.get_all_dists()

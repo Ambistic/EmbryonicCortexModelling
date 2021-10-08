@@ -19,6 +19,18 @@ def gpn_action(func):
 
     return wrapper
 
+def elementary_action(func):
+    def wrapper(self, *args, **kwargs):
+        if self.debug:
+            name = func.__name__
+            print("Action for gpn", name," with ", args, kwargs)
+
+        res = func(self, *args, **kwargs)
+        self.check_all_if_debug()
+        return res
+
+    return wrapper
+
 
 class GrowingPlanarNetwork(CheckerPlanarNetwork):
     """
@@ -318,12 +330,14 @@ class GrowingPlanarNetwork(CheckerPlanarNetwork):
 
             # if edge but dual is not correct
             elif not self.are_from_common_cycle(node, n_a, n_b):
+                self.debug_dict({"GUILTY": node, "A": n_a, "B": n_b})
                 self._remove_edge((n_a, n_b))
                 ref_dual_node = self.common_dual((node, n_a), (node, n_b))
                 self._create_edge(n_a, n_b, ref_dual_node=ref_dual_node, ref_node=node)
 
         # remove the node and merge dual neighbours
         self._remove_node(node)
+        self.debug_dict(locals())
 
     @gpn_action
     def _swap_node(self, node1, node2):
@@ -360,6 +374,7 @@ class GrowingPlanarNetwork(CheckerPlanarNetwork):
     # ******** LOW LEVEL ******** #
     ###############################
 
+    @elementary_action
     def _make_edge(self, dual_node, min_pair):
         # B5
         if self.verbose:
@@ -397,10 +412,10 @@ class GrowingPlanarNetwork(CheckerPlanarNetwork):
         self.D.nodes[dual_node]["ngb"] = CircularList()
         self.D.nodes[new_node]["ngb"] = CircularList()
 
-        # assert len(set(ingbs)) == len(ingbs), (
-        #     f"Error found pair in {ingbs} with "
-        #     f"{map_edge_pair} and {ordered_cycle_pairs}"
-        # )
+        assert len(set(ingbs)) == len(ingbs), (
+            f"Error found pair in {ingbs} with "
+            f"{map_edge_pair} and {ordered_cycle_pairs}"
+        )
 
         assert split_ngb_2 in ingbs, (
             f"Error couldn't find {split_ngb_2} in {ingbs} with "
@@ -472,6 +487,7 @@ class GrowingPlanarNetwork(CheckerPlanarNetwork):
 
         return new_node
 
+    @elementary_action
     def _remove_node(self, node):
         ingbs = self.get_intermediate_neighbours(node, net="planar")
         ngbs = self.G.nodes[node]["ngb"]
@@ -520,6 +536,7 @@ class GrowingPlanarNetwork(CheckerPlanarNetwork):
             if node != keeped_dual:
                 self.D.remove_node(node)
 
+    @elementary_action
     def _remove_edge(self, edge):
         """
         1 pick dual edge
@@ -572,6 +589,7 @@ class GrowingPlanarNetwork(CheckerPlanarNetwork):
 
         return dual_0
 
+    @elementary_action
     def _create_edge(self, source, target, ref_node=None, ref_dual_node=None):
         """
         Only for planar graph, not for dual
@@ -596,6 +614,7 @@ class GrowingPlanarNetwork(CheckerPlanarNetwork):
         else:
             self._make_edge(dual_node, (source, target))
 
+    @elementary_action
     def _quick_remove(self, node):
         assert (
             self.G.degree(node) == 2
@@ -638,6 +657,7 @@ class GrowingPlanarNetwork(CheckerPlanarNetwork):
         self.ngb(removed_dual_edge[0], net="dual").remove(removed_dual_edge)
         self.ngb(removed_dual_edge[1], net="dual").remove(removed_dual_edge)
 
+    @elementary_action
     def _make_border_edge(self, node, min_pair):
         dual_node = -1
         # B5
@@ -872,7 +892,6 @@ class GrowingPlanarNetwork(CheckerPlanarNetwork):
         return list(x)[0]
 
     def outside_with_anchor(self, node, ngb1, ngb2):
-        print("Calling outside_with_anchor")
         current = ngb2
         prev = node
         while len(self.ngb(current)) == 2 and current != node:
@@ -889,8 +908,6 @@ class GrowingPlanarNetwork(CheckerPlanarNetwork):
 
         # pick the "next" node
         next_ = self.ngb(current).next(prev)
-
-        print("debug_anchor", locals())
 
         if self.is_border_node(next_) and (current, next_) in self.G.edges:
             return self.is_border_edge((current, next_))
@@ -952,6 +969,35 @@ class GrowingPlanarNetwork(CheckerPlanarNetwork):
             [map_edge_pair[x] for x in ngb_edges]
         )
         return ordered_cycle_pairs
+    
+    def _get_quick_candidates(self, node, dual_node):
+        assert dual_node != -1, "Operation not allowed for dual -1"
+        return [ngb for ngb in 
+                self.get_intermediate_neighbours(dual_node, net="dual")
+                if (ngb != node and (ngb, node) not in self.G.edges)]
+    
+    def _get_easy_candidates(self, node):
+        """
+        Returns all quick candidates with dual_node associated
+        except for dual node -1 (just ignored)
+        """
+        candidates = []
+        for dual in self.get_intermediate_neighbours(node):
+            if dual == -1:
+                continue
+            for cand in self._get_quick_candidates(node, dual):
+                candidates.append((dual, cand))
+                
+        return candidates
+                
+    def pick_easy_candidate(self, node):
+        candidates = self._get_easy_candidates(node)
+        random.shuffle(candidates)
+        fcandidates = list(filter(lambda x: len(self.ngb(x[1])) < 5, candidates))
+        
+        if len(fcandidates) == 0:
+            return candidates[0]
+        return fcandidates[0]
 
     #################################
     # ******** STABILIZERS ******** #
@@ -1026,7 +1072,7 @@ class GrowingPlanarNetwork(CheckerPlanarNetwork):
 
             if -1 in self.dual(edge):
                 self.debug_dict({"Warn": "Stabilization tried to occur on border edge"})
-                return  # avoid removing border edge
+                return  # avoid removing border edge (is "return" required ??)
 
             self._remove_edge(edge)
 
@@ -1038,16 +1084,18 @@ class GrowingPlanarNetwork(CheckerPlanarNetwork):
 
         # MIN NGB
         if len(ngbs) + len(sides) < 3:
-            print(f"Quasi lonely node {node} with #ngbs =", len(ngbs))
+            # print(f"Quasi lonely node {node} with #ngbs =", len(ngbs))
+            # find a potential neighbour
+            potential_dual, potential_ngb = self.pick_easy_candidate(node)
+            # simply call _make_edge 
+            self._make_edge(potential_dual, (node, potential_ngb))
+            if len(self.ngb(potential_ngb)) > 5:
+                self.stabilize_ngb(potential_ngb)
 
         # CROSSING BORDER
         if self.is_border_node(node):
             for ngb in ngbs:
                 if self.is_border_node(ngb) and not self.is_border_edge((node, ngb)):
-                    print(
-                        "Removing crossing border edge",
-                        node,
-                        ngb,
-                        self.dual((node, ngb)),
-                    )
                     self._remove_edge((node, ngb))
+                    
+        self.debug_dict(locals())

@@ -15,6 +15,7 @@ class PlanarNetwork(BaseNetwork):
         self.debug = False
         self.ctrl = True
         self.verbose = False
+        self.changed = set()
         self.__next_id_D = 0
         self.__next_id_G = 0
 
@@ -24,7 +25,15 @@ class PlanarNetwork(BaseNetwork):
         gpn.D = self.D.copy()
         gpn.ctrl = self.ctrl
         gpn.debug = self.debug
+        gpn.changed = self.changed.copy()
         return gpn
+    
+    def reset_cache_changed(self):
+        self.changed.clear()
+        
+    def add_cache_changed(self, ls):
+        for x in ls:
+            self.changed.add(x)
 
     def index(self, net):
         G = self.G if net == "planar" else self.D
@@ -94,6 +103,11 @@ class PlanarNetwork(BaseNetwork):
 
     def density(self):
         return self.G.number_of_nodes() / self.perimeter() ** 2
+    
+    def summary(self, n):
+        print("Ngb", self.ngb(n))
+        print("Sides", self.sides(n))
+        print("Is border", self.is_border_node(n))
 
     def sides(self, node):
         return self.G.nodes[node].get("side", set())
@@ -105,6 +119,16 @@ class PlanarNetwork(BaseNetwork):
     def set_ngb(self, node, ngb, net="planar"):
         G = self.G if net == "planar" else self.D
         G.nodes[node]["ngb"] = CircularList(ngb)
+        
+    def add_edge(self, net, node1, node2, *args, **kwargs):
+        if net is self.G:
+            self.add_cache_changed([node1, node2])
+        return net.add_edge(node1, node2, *args, **kwargs)
+        
+    def remove_edge(self, net, node1, node2, *args, **kwargs):
+        if net is self.G:
+            self.add_cache_changed([node1, node2])
+        return net.remove_edge(node1, node2, *args, **kwargs)
 
     # helpers (to use at the end to simplify the code)
     def dual(self, edge):
@@ -237,6 +261,31 @@ class CheckerPlanarNetwork(PlanarNetwork):
             assert (
                 e in self.D.edges
             ), f"Error edge {e} is in ngbs of -1 but not in graph D"
+            
+    def check_notalone_consistency(self):
+        for n in self.G.nodes:
+            assert len(self.ngb(n)) >= 2, f"Node {n} seems to be alone !"
+            
+    def check_not_double_border(self):
+        for n in self.G.nodes:
+            if not self.is_border_node(n):
+                continue
+                
+            nb = 0
+            for ngb in self.ngb(n):
+                if self.is_border_edge((n, ngb)):
+                    nb += 1
+                    
+            assert nb < 3, f"Node {n} has to many border edges, graph might be disconnected"
+            
+    def check_not_crossing_border(self):
+        for n in self.G.nodes:
+            if not self.is_border_node(n):
+                continue
+                
+            for ngb in self.ngb(n):
+                assert self.is_border_edge((n, ngb)) or not self.is_border_node(ngb), \
+                    f"Crossing border with {n} and {ngb}"
 
     def check_all(self):
         self.check_duality_consistency()
@@ -244,6 +293,9 @@ class CheckerPlanarNetwork(PlanarNetwork):
         self.check_deep_ngb_consistency()
         self.check_void_doublet()
         self.check_void_ngbs()
+        self.check_notalone_consistency()
+        self.check_not_double_border()
+        # self.check_not_crossing_border()
 
     def check_all_if_debug(self):
         if self.debug:
