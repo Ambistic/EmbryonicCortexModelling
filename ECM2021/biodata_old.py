@@ -41,6 +41,9 @@ sorted_number_cells = tuple(zip(*tuple(sorted(list(zip(volumes["Age"],
 spl = splrep(*sorted_number_cells)
 x2 = np.linspace(49, 94, 200)
 y2 = splev(x2, spl)
+
+def plot_number_cells():
+    plt.plot(*sorted_number_cells, 'o', x2, y2)
     
     
 # From Betizeau et al.
@@ -58,9 +61,3 @@ ratio_eomes["val"] = (ratio_eomes.VZ * ratio_eomes.ratio_VZ
                    + ratio_eomes.ISVZ * ratio_eomes.ratio_ISVZ
                    + ratio_eomes.OSVZ * ratio_eomes.ratio_OSVZ) \
                   / (ratio_eomes.ratio_VZ + ratio_eomes.ratio_ISVZ + ratio_eomes.ratio_OSVZ)
-
-def plot_number_cells():
-    plt.plot(*sorted_number_cells, 'o', x2, y2, label="Ref")
-    
-def plot_ratio_eomes():
-    plt.plot(ratio_eomes.index, ratio_eomes.val / 100, label="Ref")

@@ -5,7 +5,6 @@ import os
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
-from viz import plot_size_ratio
 from vizualisation.utils import gather_groups, gather_metagroups, read_dir, \
     listtuple_to_dict, get_param_name, get_name_for_file
 from vizualisation.plot import renderers
@@ -14,11 +13,13 @@ def render(args):
     params = read_dir(args.dir)
     groups = gather_groups(params)
     metagroups = gather_metagroups(groups)
+
+    print("Building metagroups :", *list(metagroups.keys()))
     
     # save global csv file
     for key, meta in tqdm(metagroups.items()):
         for renderer in renderers:
-            title = " ".join([listtuple_to_dict(key).get("model"), get_param_name(key), renderer.name])
+            title = " ".join([get_param_name(key), renderer.name])
             renderer(meta, args.dir, title=title)
             plt.savefig(P(args.outdir) / (get_name_for_file(key) + "_" + renderer.name + ".png"))
             plt.close()

@@ -10,7 +10,7 @@ Tc_ = lambda time: 277.36424309532794 - 0.023973977538587 * time - 0.76156863447
 
 
 # Volume MRI + Histo
-root = Path(os.path.realpath(__file__)).parent.parent
+root = Path(os.path.realpath(__file__)).parent.parent.parent
 volumes = pd.read_csv(root / 'data/VolumeArea17.csv')
 # what we do is to average some ages
 volumes = volumes.append(volumes.loc[volumes.Age.isin([70, 72])].mean(), ignore_index=True)
