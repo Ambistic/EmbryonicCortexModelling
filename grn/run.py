@@ -27,7 +27,6 @@ def get_params():
         GP_as_IP=False,
     )
 
-
 def is_float(string):
     try:
         float(string)
@@ -36,11 +35,9 @@ def is_float(string):
     else:
         return '.' in string
 
-
 def parse_getitem(name):
     n, i = re.findall("^([^[]*)\[(\d+)\]", name)[0]
     return n, int(i)
-
 
 def parse_value(value):
     print("PARSING", value)
@@ -58,7 +55,6 @@ def parse_value(value):
     
     return value
 
-
 def parse_one_param(ref_params, p):
     if not len(p) == 2:
         raise ValueError(f"Must provide a name and a value, {p}")
@@ -75,11 +71,9 @@ def parse_one_param(ref_params, p):
     else:
         ref_params[name] = value
 
-
 def parse_params(ref_params, params):
     for p in params:
         parse_one_param(ref_params, p)
-
 
 def go(args):
     # TODO new param eval technique
@@ -136,7 +130,7 @@ def save_txt(txt, name):
 
 
 if __name__ == "__main__":
-    ROOT = Path(os.path.realpath(__file__)).parent
+    ROOT = Path(os.path.realpath(__file__)).parent.parent
     parser = argparse.ArgumentParser()
 
     parser.add_argument("-n", "--name", default=None, type=str)
@@ -149,6 +143,7 @@ if __name__ == "__main__":
     parser.add_argument("-p", "--params", nargs="*", action='append', default=[])
 
     args = parser.parse_args()
+    
 
     if args.name is None:
         args.name = str(random.randint(0, 1e6))    
@@ -159,7 +154,7 @@ if __name__ == "__main__":
         random.seed(seed + int(args.sample * 1e3))
         np.random.seed(seed + int(args.sample * 1e3))
         try:
-            out_bb = go(args)
+            bb = go(args)
         except Exception as e:
             print("Exception found", e)
             print("Traceback below")

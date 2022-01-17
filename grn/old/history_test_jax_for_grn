@@ -1,0 +1,81 @@
+
+   1: import numpy as np
+   2: import jax.numpy as jnp
+   3:
+
+def gene_expression(x, b, theta, m):
+    x_ = (x + b)**m
+    return x_ / (x_ + theta**m)
+   4:
+shape = (1000,)
+x = np.zeros(shape)
+b = np.zeros(shape)
+theta = np.zeros(shape)
+m = np.zeros(shape)
+
+jx = jnp.zeros(shape)
+jb = jnp.zeros(shape)
+jtheta = jnp.zeros(shape)
+jm = jnp.zeros(shape)
+   5: from jax import jit
+   6: jgene_expression = jit(gene_expression)
+   7: %time jgene_expression(jx, jb, jtheta, jm)
+   8: %time _ = jgene_expression(jx, jb, jtheta, jm)
+   9: %time _ = gene_expression(x, b, theta, m)
+  10: %time _ = gene_expression(x, b, theta, m)
+  11: %time _ = jgene_expression(jx, jb, jtheta, jm)
+  12: %time _ = jgene_expression(jx, jb, jtheta, jm)
+  13: %time _ = gene_expression(x, b, theta, m)
+  14: %timeit _ = jgene_expression(jx, jb, jtheta, jm).block_until_ready()
+  15: %timeit _ = gene_expression(x, b, theta, m)
+  16:
+shape = (100000,)
+x = np.zeros(shape)
+b = np.zeros(shape)
+theta = np.zeros(shape)
+m = np.zeros(shape)
+
+jx = jnp.zeros(shape)
+jb = jnp.zeros(shape)
+jtheta = jnp.zeros(shape)
+jm = jnp.zeros(shape)
+  17: %timeit _ = jgene_expression(jx, jb, jtheta, jm).block_until_ready()
+  18: %timeit _ = gene_expression(x, b, theta, m)
+  19:
+shape = (10000,)
+x = np.zeros(shape)
+b = np.zeros(shape)
+theta = np.zeros(shape)
+m = np.zeros(shape)
+
+jx = jnp.zeros(shape)
+jb = jnp.zeros(shape)
+jtheta = jnp.zeros(shape)
+jm = jnp.zeros(shape)
+  20: %timeit _ = jgene_expression(jx, jb, jtheta, jm).block_until_ready()
+  21: %timeit _ = gene_expression(x, b, theta, m)
+  22: %timeit _ = gene_expression(np.zeros(shape), np.zeros(shape), np.zeros(shape), np.zeros(shape))
+  23: %timeit _ = jgene_expression(jnp.zeros(shape), jnp.zeros(shape), jnp.zeros(shape), jnp.zeros(shape)).block_until_ready()
+  24: %timeit _ = np.zeros(shape)
+  25: %timeit _ = jnp.zeros(shape)
+  26: batched_x = [jnp.zeros((100,)) for i in range(100)]
+  27: jbatched_x = [jnp.zeros((100,)) for i in range(100)]
+  28: batched_x = [np.zeros((100,)) for i in range(100)]
+  29: from jax import vmap
+  30:
+def vmap_batched_apply_matrix(v_batched):
+    return vmap(jgene_expression)(v_batched, v_batched, v_batched, v_batched)
+  31:
+def batched_apply_matrix(v_batched_all):
+    return [jgene_expression(v_batched, v_batched, v_batched, v_batched) for v_batched in v_batched_all]
+  32: %timeit _ = batched_apply_matrix(batched_x)
+  33: %timeit _ = vmap_batched_apply_matrix(jbatched_x)
+  34:
+@jit
+def jbatched_apply_matrix(v_batched_all):
+    return [jgene_expression(v_batched, v_batched, v_batched, v_batched) for v_batched in v_batched_all]
+  35: %timeit _ = jbatched_apply_matrix(jbatched_x)
+  36: %timeit _ = vmap_batched_apply_matrix(jbatched_x)
+  37: %timeit _ = jbatched_apply_matrix(jbatched_x)
+  38: %timeit _ = batched_apply_matrix(batched_x)
+  39: %history -g -f history_test_jax_for_grn

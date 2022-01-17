@@ -8,6 +8,7 @@ from lib.utils import highest_lower, variate_prop
 
 SIG_TC = 12.5
 
+
 class CellTypeClassic(Enum):
     RG = 0
     IP = 1
@@ -26,7 +27,6 @@ diff_values_IP = np.array([0.23, 0.23, 0.23, 0.23, 0.23])
 lin_diff_IP = interp1d(timesteps, diff_values_IP)
 
 def diff_func_bistate(time_, type_):
-    val = lin_diff(time_)
     if type_ == CellTypeClassic.RG:
         val = lin_diff_RG(time_)
         return choice([CellTypeClassic.RG, CellTypeClassic.IP], 1, p=[val, 1-val])[0]
@@ -112,31 +112,6 @@ class BiStateModelFactory:
         # TC
         Tc_IP = lambda x: Tc_(x) * tc_coeff_IP[highest_lower(timesteps, x)]
         Tc_RG = lambda x: Tc_(x) * tc_coeff_RG[highest_lower(timesteps, x)]
-        
-        def repr_():
-            timesteps = np.arange(49, 95, 0.1)
-            fig = plt.figure(figsize=(12, 8))
-            fig.suptitle("Parameters of submodel 2", fontsize=14)
-
-            plt.subplot(2, 2, 1)
-            plt.title("Diff RG")
-            plt.ylim(0, 1)
-            plt.plot(timesteps, list(map(lin_diff_RG, timesteps)))
-
-            plt.subplot(2, 2, 2)
-            plt.title("Diff IP")
-            plt.ylim(0, 1)
-            plt.plot(timesteps, list(map(lin_diff_IP, timesteps)))
-
-            plt.subplot(2, 2, 3)
-            plt.ylim(0, 100)
-            plt.title(f"Tc (h) RG, sigma={SIG_TC}, min=10")
-            plt.plot(timesteps, list(map(Tc_RG, timesteps)))
-
-            plt.subplot(2, 2, 4)
-            plt.ylim(0, 100)
-            plt.title(f"Tc (h) IP, sigma={SIG_TC}, min=10")
-            plt.plot(timesteps, list(map(Tc_IP, timesteps)))
             
         def tc_func_bistate(time_, type_):
             if type_ == CellTypeClassic.RG:
@@ -154,9 +129,7 @@ class BiStateModelFactory:
                 val = lin_diff_IP(time_)
                 return choice([CellTypeClassic.IP, CellTypeClassic.PostMitotic], 1, p=[val, 1-val])[0]
 
-
-
-        self.model = Submodels(tc_func_bistate, diff_func_bistate, repr_=repr_)
+        self.model = Submodels(tc_func_bistate, diff_func_bistate)
         
     def generate(self, *args, **kwargs):
         return CellBiStateBasic(*args, **kwargs, submodel=self.model)

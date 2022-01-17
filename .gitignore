@@ -1,4 +1,7 @@
 output/
+cbmos/
+jf/
+pysched/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

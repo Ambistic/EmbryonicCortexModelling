@@ -140,7 +140,8 @@ if __name__ == "__main__":
     parser.add_argument("-t", "--start", default=49, type=int)
     parser.add_argument("-m", "--model", default="basic", type=str)
     parser.add_argument("-c", "--check", action="store_true")
-    parser.add_argument("-p", "--params", nargs="*", action='append')
+    parser.add_argument("-p", "--params", nargs="*", action='append', default=[])
+    # TODO add a root argument and build the dir by default
 
     args = parser.parse_args()
     
@@ -149,7 +150,7 @@ if __name__ == "__main__":
         args.name = str(random.randint(0, 1e6))    
     
     seed = 0
-    while True:
+    while True:  # TODO remove the while loop, it shall be one shot
         print("Doing", seed + int(args.sample * 1e3))
         random.seed(seed + int(args.sample * 1e3))
         np.random.seed(seed + int(args.sample * 1e3))

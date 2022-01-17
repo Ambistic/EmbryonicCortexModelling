@@ -1,19 +1,10 @@
 import numpy as np
-import seaborn as sns
-import tqdm
-import random
 import matplotlib.pyplot as plt
-import os
 import pandas as pd
 from lib.utils import nop
-from numpy.random import choice
-from scipy.interpolate import splev, splrep, interp1d
 from collections import Counter
 from enum import Enum
 from functools import lru_cache
-
-import sys
-sys.path.append("../../cbmos")
 
 from cbmos import CBModelv3
 import cbmos.force_functions as ff
@@ -52,6 +43,16 @@ class Submodels:
 
 # Definition of the class
 class Brain:
+    """
+    Time steps are defined as follows :
+    start_time is the time of init, and init param are logged
+    When a step is run from T to T+t, the T is already registered, then
+    T+t is run, then T+t is logged.
+    Therefore, when we run something until T=N, then the time N
+    is computed and logged, then we stop
+
+    """
+    opti = False
 
     ##################
     # INITIALISATION #
@@ -72,10 +73,13 @@ class Brain:
         s=1.0,
         a=5.0,
         rA=1.5,
+        opti=False,
+        max_pop_size=1e4
     ):
         # debug args
         self.verbose = verbose
         self.silent = silent
+        self.opti = opti
 
         # model params
         self.start_population = start_population
@@ -90,6 +94,7 @@ class Brain:
         self.range = np.arange(self.start_time, self.end_time, self.time_step)
         self.lenrange = len(self.range)
         self.current_step = 0
+        self.max_pop_size = max_pop_size
 
         # init
         self.tissue = CBModelv3(ff.Gls(), ef.solve_ivp, dimension=2,
@@ -99,6 +104,7 @@ class Brain:
         self.initiate_population()
         self.init_stats()
         self.snapshots = list()
+        self.monitor(self.start_time)
 
     def build_cell_cls(self, cell_cls):
         from submodels import factories
@@ -108,7 +114,7 @@ class Brain:
         elif isinstance(cell_cls, tuple):
             name, args, kwargs = cell_cls
             factory = factories[name](*args, **kwargs)
-            return factory.generate
+            return factory  # TODO change all generate to __call__
 
     def debug(self, x):
         if self.verbose:
@@ -154,8 +160,24 @@ class Brain:
     def run(self):
         for T in np.arange(self.start_time, self.end_time, self.time_step):
             if not self._tick(T, self.time_step):
-                print("Not enough cells anymore")
-                return
+                self.info("Population exploded or extinguished")
+                return False
+        return True
+            
+    def run_until(self, time_point):
+        """
+        Runs until the given time point. Returns True if succeeded and
+        returns False is it stopped before
+        """
+        while (self.current_step < self.lenrange) \
+                and (self.range[self.current_step] < time_point):
+            T = self.range[self.current_step]
+            if not self._tick(T, self.time_step):
+                self.info("Population exploded or extinguished")
+                return False
+            self.current_step += 1
+
+        return True
             
     def run_one_step(self):
         if self.current_step >= self.lenrange:
@@ -168,20 +190,59 @@ class Brain:
         return True
 
     def _tick(self, absolute_time, relative_time):
-        self.info(f"Ticking abs : {absolute_time}, step : {relative_time}")
-        self._sanity_check()
+        self.info(f"Ticking abs : {absolute_time}, step : {relative_time}, size : {len(self.tissue_population)}")
+        if not self._sanity_check():
+            return False
+        
+        if len(self.tissue_population) < (self.start_population**2 / 2):
+            return False
 
         # take care of cells
+        if self.opti:
+            self._tick_cell_programs_batch(absolute_time, relative_time)
+        else:
+            self._tick_cell_programs(absolute_time, relative_time)
+            
+        self.tissue.tick(absolute_time, relative_time)
+
+        self.monitor(absolute_time + relative_time)  # because after computation
+        self.snapshots.append(dict(
+            tissue=self.tissue.export(),
+            tissue_ids=self.tissue_population.copy(),
+        ))
+        assert set(self.tissue.export().keys()) == set(self.tissue_population.keys())
+        return True
+
+    def _tick_cell_programs(self, absolute_time, relative_time):
+        # take care of cells
         for C_id in list(self.tissue_population.values()):
-            if len(self.tissue_population) < (self.start_population**2 / 2):
-                return False
             C = self.population[C_id]
             neighbours = self.get_neighbours(C)
             action = C.tick(absolute_time, relative_time, neighbours)
             self.run_action(action, C, absolute_time)
-            
-        self.tissue.tick(absolute_time, relative_time)
 
+    def _tick_cell_programs_batch(self, absolute_time, relative_time):
+        # take care of cells
+        cells = [self.population[C_id] for C_id in list(self.tissue_population.values())]
+        for C in cells:
+            neighbours = self.get_neighbours(C)
+            C.set_neighbourhood(neighbours)
+
+        # this batch function must be provided by the cell class
+        self.cell_cls.batch_tick(cells, absolute_time, relative_time)
+
+        for C in cells:
+            action = C.get_action()
+            self.run_action(action, C, absolute_time)
+
+    def _sanity_check(self):
+        if len(self.tissue_population) > self.max_pop_size:
+            # raise RuntimeError("Model stops when population increases above {}".format(self.max_pop_size))
+            self.info("Population explosion")
+            return False
+        return True
+    
+    def monitor(self, absolute_time):
         # monitor
         stats = dict(
             progenitor_pop_size=len(self.tissue_population),
@@ -191,16 +252,6 @@ class Brain:
         )
 
         self.add_stat_time(absolute_time, stats)
-        self.snapshots.append(dict(
-            tissue=self.tissue.export(),
-            tissue_ids=self.tissue_population.copy(),
-        ))
-        assert set(self.tissue.export().keys()) == set(self.tissue_population.keys())
-        return True
-
-    def _sanity_check(self):
-        if len(self.population) > 5e4:
-            raise RuntimeError("Model stops when population increases above 5E4")
 
     #################
     ###  ACTIONS  ###
@@ -217,9 +268,14 @@ class Brain:
         self.debug("Duplicating cell " + str(cell.index) + " located in " + str(cell.tissue_id))
         del self.tissue_population[cell.tissue_id]
         new_tissue_id1, new_tissue_id2 = self.tissue.divide_cell(cell.tissue_id)
-        time_ = cell.appear_time + cell.eff_Tc
 
-        # time_ = T
+        try:
+            # TODO clear this part / harmonize
+            time_ = cell.appear_time + cell.eff_Tc
+
+        except TypeError:
+            time_ = T
+
         new_cell_1 = cell.generate_daughter_cell(time_, index=self.new_cell_id(),
                 tissue_id=new_tissue_id1)
         new_cell_2 = cell.generate_daughter_cell(time_, index=self.new_cell_id(),
@@ -250,7 +306,7 @@ class Brain:
         return [self.population[self.tissue_population[i]] for i in ngbs]
     
     def get_neighbours_from_tissue_id(self, tissue_id, exclude=[]):
-        ngbs = self.tissue.get_neighbours(cell.tissue_id)
+        ngbs = self.tissue.get_neighbours(tissue_id)
         ngbs = list(set(ngbs) - set(exclude))
         return [self.population[self.tissue_population[i]] for i in ngbs]
     
