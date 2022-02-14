@@ -10,7 +10,7 @@ from submodels import factories
 import pandas as pd
 from itertools import accumulate
 import numpy as np
-from lib.sde.grn2 import GRNMain2
+from lib.sde.grn.grn2 import GRNMain2
 from lib.sde.mutate import multi_mutate_grn2
 from lib.ga.utils import weighted_selection
 from jf.utils.export import Exporter

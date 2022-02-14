@@ -1,8 +1,10 @@
 from enum import Enum
+import numpy as np
 
-from lib.sde.grn2 import GRNMain2
-from lib.sde.cell2 import Cell2 as Cell, CellBatch
-from model import Action, AbstractCell
+from lib.sde.grn.grn2 import GRNMain2
+from lib.sde.cell.cell2 import Cell2 as Cell, CellBatch
+from lib.population import AbstractCell
+from lib.action import Action
 from jf.autocompute.jf import O
 
 
@@ -72,8 +74,11 @@ class CellGRN2(AbstractCell):
         return self.division_time > C.division_time
 
     def generate_daughter_cell(self, T, index, tissue_id=None, **kwargs):
+        """Requires a provide_index because cell programs are generated simultaneously
+        due to asymmetrical sharing of the molecules"""
         if self.daughter_cells is None:
             self.daughter_cells = self.cell_program.divide()
+
         if self.daughter_provide_index >= len(self.daughter_cells):
             raise RuntimeError("Trying to take the n{} cell but length is {}".format(
                 self.daughter_provide_index, len(self.daughter_cells)
@@ -83,6 +88,9 @@ class CellGRN2(AbstractCell):
         self.daughter_provide_index += 1
         return super().generate_daughter_cell(T, index, tissue_id=tissue_id, cell_program=daughter_cell_program,
                                               **kwargs)
+
+    def freeze(self):
+        return np.asarray(self.cell_program.quantities)
 
 
 class GRNModelFactory:

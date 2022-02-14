@@ -1,6 +1,8 @@
 from enum import Enum
 from lib.biodata import Tc_
-from model import Action, Submodels, AbstractCell
+from model import Submodels
+from lib.population import AbstractCell
+from lib.action import Action
 import numpy as np
 from scipy.interpolate import interp1d
 from numpy.random import choice

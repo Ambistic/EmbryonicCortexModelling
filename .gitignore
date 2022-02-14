@@ -2,6 +2,7 @@ output/
 cbmos/
 jf/
 pysched/
+.debug/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

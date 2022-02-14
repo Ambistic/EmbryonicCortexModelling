@@ -12,9 +12,9 @@ from submodels import factories
 import pandas as pd
 from itertools import accumulate
 import numpy as np
-from lib.sde.grn2 import GRNMain2
-from lib.sde.mutate import mutate_grn2
-from lib.ga.utils import weighted_selection
+from lib.sde.grn.grn2 import GRNMain2
+from lib.sde.mutate import multi_mutate_grn2
+from lib.ga.utils import weighted_selection, normalize_fitness_values
 from jf.utils.export import Exporter
 from jf.autocompute.jf import O
 from jf.models.stringmodel import read_model
@@ -25,7 +25,7 @@ SM_GEN = read_model("generation")
 
 NB_GENES = 7
 
-NAME = "abs_score_v2"
+NAME = "mutation_f1"
 
 
 
@@ -44,8 +44,7 @@ class Solution:
         return Solution(self.grn.copy())
         
     def mutate(self):
-        # TODO add poisson number of mutation
-        mutate_grn2(self.grn)
+        multi_mutate_grn2(self.grn, value=1, method="fixed")
 
 
 def run_grn(prun, grn):
@@ -129,7 +128,9 @@ def do_selection(prun, pop_fit, pop):
     
     print("Total fitness :", acc[-1])
     
-    pop_sel, history_sel = weighted_selection(pop, pop_fit, individual_generator, new_fitness=0.3)
+    new_pop_fit = normalize_fitness_values(pop_fit)
+    
+    pop_sel, history_sel = weighted_selection(pop, new_pop_fit, individual_generator, new_fitness=0.3)
         
     return pop_sel, history_sel, best_id
 
@@ -192,8 +193,8 @@ def main(prun):
 
 class ObjectiveStep(O):
     end_time = 0
-    max_fitness = 6
-    min_fitness = 1
+    max_fitness = 4
+    min_fitness = 0.75
 
 
 example_steps = [

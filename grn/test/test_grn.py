@@ -1,8 +1,8 @@
 import pickle
 
-from lib.sde.grn import GRNSingular, GRNOpt, GRNMain
-from lib.sde.grn2 import GRNMain2
-from lib.sde.cell import Cell
+from lib.sde.grn.grn import GRNSingular, GRNOpt, GRNMain
+from lib.sde.grn.grn2 import GRNMain2
+from lib.sde.cell.cell import Cell
 
 
 def test_grn():

@@ -3,7 +3,7 @@
 
 import os
 
-from lib.score import score_both_size
+from lib.score import score_both_size_new
 
 os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = ".20"
 
@@ -12,8 +12,9 @@ from submodels import factories
 import pandas as pd
 from itertools import accumulate
 import numpy as np
+import argparse
 from lib.sde.grn.grn2 import GRNMain2
-from lib.sde.mutate import mutate_grn2
+from lib.sde.mutate import multi_mutate_grn2
 from lib.ga.utils import weighted_selection
 from jf.utils.export import Exporter
 from jf.autocompute.jf import O
@@ -23,7 +24,11 @@ from jf.models.stringmodel import read_model
 REF = pd.read_csv("output/results/setup_basic/export/ref_basic2.csv")  # ref is a mean
 SM_GEN = read_model("generation")
 
-NB_GENES = 7
+# NB_GENES = 7
+
+# NAME = "objective_0.25_g7_v2"
+
+
 
 # In[5]:
 
@@ -41,7 +46,7 @@ class Solution:
         
     def mutate(self):
         # TODO add poisson number of mutation
-        mutate_grn2(self.grn)
+        multi_mutate_grn2(self.grn, value=2, method="poisson")
 
 
 def run_grn(prun, grn):
@@ -52,7 +57,7 @@ def run_grn(prun, grn):
 
 def get_bb(prun, grn):
     ccls = factories["grn2_opti"](grn=grn)
-    bb = Brain(time_step=0.125, verbose=False, start_population=5, max_pop_size=1e3,
+    bb = Brain(time_step=0.5, verbose=False, start_population=5, max_pop_size=1e3,
             cell_cls=ccls, end_time=prun.end_time, start_time=50, silent=True)
     return bb
 
@@ -73,7 +78,7 @@ def fitness_multistep(prun, grn, steps):
     for step in steps:
         if not bb.run_until(step.end_time):
             stop = True
-        score_step = score_both_size(bb.stats, prun.ref, max_step=step.end_time, min_step=previous_time)
+        score_step = score_both_size_new(bb.stats, prun.ref, max_step=step.end_time, min_step=previous_time)
         fitness_step = 1.0 / score_step
         fitness_step = min(fitness_step, step.max_fitness)
         total_fitness += fitness_step
@@ -111,8 +116,6 @@ def do_init_pop(prun):
 
 
 def do_fitness(prun, pop):
-    # fitness = [fitness_func(prun, sol.grn, score_func) for sol in pop]
-    # fitness = [fitness_strategy(prun, sol.grn) for sol in pop]
     fitness, stats = zip(*[fitness_multistep(prun, sol.grn, prun.steps) for sol in pop])
     return fitness, stats
 
@@ -150,7 +153,7 @@ def pick_last_exported(exporter):
 def main(prun):
     exporter = Exporter(name=prun.name, copy_stdout=True)
     definition = """
-    timestep = 0.125
+    use sqrt for normalizing the values instead of abs
     """
     exporter.print(definition, slot="definition")
     best = 0
@@ -186,29 +189,6 @@ def main(prun):
     return best
 
 
-class ObjectiveStep(O):
-    end_time = 0
-    max_fitness = 6
-    min_fitness = 1
-
-
-example_steps = [
-    ObjectiveStep(end_time=53),
-    ObjectiveStep(end_time=56),
-    ObjectiveStep(end_time=59),
-    ObjectiveStep(end_time=62),
-    ObjectiveStep(end_time=65),
-    ObjectiveStep(end_time=68),
-    ObjectiveStep(end_time=71),
-    ObjectiveStep(end_time=74),
-    ObjectiveStep(end_time=77),
-    ObjectiveStep(end_time=80),
-    ObjectiveStep(end_time=83),
-    ObjectiveStep(end_time=86),
-    ObjectiveStep(end_time=89),
-]
-
-
 class ParamRun(O):
     pop_size = 50
     n_gen = 100
@@ -219,7 +199,40 @@ class ParamRun(O):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-n", "--number", type=int, default=7,
+                        help="Number of genes")
+    parser.add_argument("-t", "--threshold", type=float, default=1.0,
+                        help="Min threshold for objective step")
+    pargs = parser.parse_args()
+    
+    NB_GENES = pargs.number
+    NAME = f"objective_{pargs.threshold}_g{pargs.number}_v2"
+    
     args = ParamRun()
+    
+    class ObjectiveStep(O):
+        end_time = 0
+        max_fitness = 4
+        min_fitness = pargs.threshold
+
+
+    example_steps = [
+        ObjectiveStep(end_time=53),
+        ObjectiveStep(end_time=56),
+        ObjectiveStep(end_time=59),
+        ObjectiveStep(end_time=62),
+        ObjectiveStep(end_time=65),
+        ObjectiveStep(end_time=68),
+        ObjectiveStep(end_time=71),
+        ObjectiveStep(end_time=74),
+        ObjectiveStep(end_time=77),
+        ObjectiveStep(end_time=80),
+        ObjectiveStep(end_time=83),
+        ObjectiveStep(end_time=86),
+        ObjectiveStep(end_time=89),
+    ]
+    
     args.steps = example_steps
-    args.name = "test_ts_0.125_true"
+    args.name = NAME
     main(args)

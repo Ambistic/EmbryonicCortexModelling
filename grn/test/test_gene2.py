@@ -1,4 +1,4 @@
-from lib.sde.gene2 import ParamGene
+from lib.sde.gene.gene2 import ParamGene
 
 
 def test_get():

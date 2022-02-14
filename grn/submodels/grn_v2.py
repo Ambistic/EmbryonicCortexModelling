@@ -1,8 +1,9 @@
 from enum import Enum
 
-from lib.sde.grn2 import GRNMain2
-from lib.sde.cell2 import Cell2 as Cell
-from model import Action, AbstractCell
+from lib.sde.grn.grn2 import GRNMain2
+from lib.sde.cell.cell2 import Cell2 as Cell
+from lib.population import AbstractCell
+from lib.action import Action
 from jf.autocompute.jf import O
 
 

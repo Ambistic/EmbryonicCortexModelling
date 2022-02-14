@@ -3,7 +3,7 @@
 
 import os
 
-from lib.score import score_both_size
+from lib.score import score_both_size_new
 
 os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = ".20"
 
@@ -13,8 +13,8 @@ import pandas as pd
 from itertools import accumulate
 import numpy as np
 from lib.sde.grn.grn2 import GRNMain2
-from lib.sde.mutate import mutate_grn2
-from lib.ga.utils import weighted_selection
+from lib.sde.mutate import multi_mutate_grn2
+from lib.ga.utils import weighted_selection, normalize_fitness_values
 from jf.utils.export import Exporter
 from jf.autocompute.jf import O
 from jf.models.stringmodel import read_model
@@ -24,6 +24,10 @@ REF = pd.read_csv("output/results/setup_basic/export/ref_basic2.csv")  # ref is 
 SM_GEN = read_model("generation")
 
 NB_GENES = 7
+
+NAME = "mutation_p3"
+
+
 
 # In[5]:
 
@@ -40,8 +44,7 @@ class Solution:
         return Solution(self.grn.copy())
         
     def mutate(self):
-        # TODO add poisson number of mutation
-        mutate_grn2(self.grn)
+        multi_mutate_grn2(self.grn, value=3, method="poisson")
 
 
 def run_grn(prun, grn):
@@ -52,7 +55,7 @@ def run_grn(prun, grn):
 
 def get_bb(prun, grn):
     ccls = factories["grn2_opti"](grn=grn)
-    bb = Brain(time_step=0.125, verbose=False, start_population=5, max_pop_size=1e3,
+    bb = Brain(time_step=0.5, verbose=False, start_population=5, max_pop_size=1e3,
             cell_cls=ccls, end_time=prun.end_time, start_time=50, silent=True)
     return bb
 
@@ -73,7 +76,7 @@ def fitness_multistep(prun, grn, steps):
     for step in steps:
         if not bb.run_until(step.end_time):
             stop = True
-        score_step = score_both_size(bb.stats, prun.ref, max_step=step.end_time, min_step=previous_time)
+        score_step = score_both_size_new(bb.stats, prun.ref, max_step=step.end_time, min_step=previous_time)
         fitness_step = 1.0 / score_step
         fitness_step = min(fitness_step, step.max_fitness)
         total_fitness += fitness_step
@@ -125,7 +128,9 @@ def do_selection(prun, pop_fit, pop):
     
     print("Total fitness :", acc[-1])
     
-    pop_sel, history_sel = weighted_selection(pop, pop_fit, individual_generator, new_fitness=0.3)
+    new_pop_fit = normalize_fitness_values(pop_fit)
+    
+    pop_sel, history_sel = weighted_selection(pop, new_pop_fit, individual_generator, new_fitness=0.3)
         
     return pop_sel, history_sel, best_id
 
@@ -150,7 +155,7 @@ def pick_last_exported(exporter):
 def main(prun):
     exporter = Exporter(name=prun.name, copy_stdout=True)
     definition = """
-    timestep = 0.125
+    use sqrt for normalizing the values instead of abs
     """
     exporter.print(definition, slot="definition")
     best = 0
@@ -188,8 +193,8 @@ def main(prun):
 
 class ObjectiveStep(O):
     end_time = 0
-    max_fitness = 6
-    min_fitness = 1
+    max_fitness = 4
+    min_fitness = 0.75
 
 
 example_steps = [
@@ -221,5 +226,5 @@ class ParamRun(O):
 if __name__ == "__main__":
     args = ParamRun()
     args.steps = example_steps
-    args.name = "test_ts_0.125_true"
+    args.name = NAME
     main(args)

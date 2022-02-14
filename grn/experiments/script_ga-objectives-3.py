@@ -3,7 +3,7 @@
 
 import os
 
-from lib.score import score_both_size
+from lib.score import score_both_size_new
 
 os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = ".20"
 
@@ -24,6 +24,10 @@ REF = pd.read_csv("output/results/setup_basic/export/ref_basic2.csv")  # ref is 
 SM_GEN = read_model("generation")
 
 NB_GENES = 7
+
+NAME = "objective_0.75"
+
+
 
 # In[5]:
 
@@ -52,7 +56,7 @@ def run_grn(prun, grn):
 
 def get_bb(prun, grn):
     ccls = factories["grn2_opti"](grn=grn)
-    bb = Brain(time_step=0.125, verbose=False, start_population=5, max_pop_size=1e3,
+    bb = Brain(time_step=0.5, verbose=False, start_population=5, max_pop_size=1e3,
             cell_cls=ccls, end_time=prun.end_time, start_time=50, silent=True)
     return bb
 
@@ -73,7 +77,7 @@ def fitness_multistep(prun, grn, steps):
     for step in steps:
         if not bb.run_until(step.end_time):
             stop = True
-        score_step = score_both_size(bb.stats, prun.ref, max_step=step.end_time, min_step=previous_time)
+        score_step = score_both_size_new(bb.stats, prun.ref, max_step=step.end_time, min_step=previous_time)
         fitness_step = 1.0 / score_step
         fitness_step = min(fitness_step, step.max_fitness)
         total_fitness += fitness_step
@@ -150,7 +154,7 @@ def pick_last_exported(exporter):
 def main(prun):
     exporter = Exporter(name=prun.name, copy_stdout=True)
     definition = """
-    timestep = 0.125
+    use sqrt for normalizing the values instead of abs
     """
     exporter.print(definition, slot="definition")
     best = 0
@@ -188,8 +192,8 @@ def main(prun):
 
 class ObjectiveStep(O):
     end_time = 0
-    max_fitness = 6
-    min_fitness = 1
+    max_fitness = 4
+    min_fitness = 0.75
 
 
 example_steps = [
@@ -221,5 +225,5 @@ class ParamRun(O):
 if __name__ == "__main__":
     args = ParamRun()
     args.steps = example_steps
-    args.name = "test_ts_0.125_true"
+    args.name = NAME
     main(args)

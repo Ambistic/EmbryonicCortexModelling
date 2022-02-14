@@ -1,28 +1,20 @@
 import numpy as np
-import matplotlib.pyplot as plt
 import pandas as pd
+
+from lib.action import Action
 from lib.utils import nop
 from collections import Counter
-from enum import Enum
 from functools import lru_cache
+from collections import defaultdict
 
 from cbmos import CBModelv3
 import cbmos.force_functions as ff
 import cbmos.solvers.euler_forward as ef
 
-
 START_POPULATION_SQRT = 10
 START_TIME = 49
 END_TIME = 94
 SIG_TC = 12.5
-
-
-class Action(Enum):
-    NoOp = 0
-    Divide = 1
-    Die = 2
-    DiffNeuron = 3
-    Migrate = 4
 
 
 class Submodels:
@@ -59,24 +51,25 @@ class Brain:
     ##################
 
     def __init__(
-        self,
-        start_population=START_POPULATION_SQRT,
-        start_time=START_TIME,
-        end_time=END_TIME,
-        time_step=1,
-        sig_tc=SIG_TC,
-        cell_cls=None,
-        verbose=False,
-        silent=False,
-        dt=0.01,
-        mu=5.70,
-        s=1.0,
-        a=5.0,
-        rA=1.5,
-        opti=False,
-        max_pop_size=1e4
+            self,
+            start_population=START_POPULATION_SQRT,
+            start_time=START_TIME,
+            end_time=END_TIME,
+            time_step=1,
+            sig_tc=SIG_TC,
+            cell_cls=None,
+            verbose=False,
+            silent=False,
+            opti=False,
+            max_pop_size=1e4,
+            record_tissue=False,
+            record_population=False,
+            run_tissue=True,
     ):
         # debug args
+        self.run_tissue = run_tissue
+        self.record_tissue = record_tissue
+        self.record_population = record_population
         self.verbose = verbose
         self.silent = silent
         self.opti = opti
@@ -97,16 +90,22 @@ class Brain:
         self.max_pop_size = max_pop_size
 
         # init
+        dt = 0.01
+        mu = 5.70
+        s = 1.0
+        a = 5.0
+        rA = 1.5
         self.tissue = CBModelv3(ff.Gls(), ef.solve_ivp, dimension=2,
-                        force_args={"mu": mu, "s": s, "rA": rA, "a": a},
-                        solver_args={'dt': dt},)
+                                force_args={"mu": mu, "s": s, "rA": rA, "a": a},
+                                solver_args={'dt': dt}, )
         self.init_mapping()
         self.initiate_population()
-        self.init_stats()
-        self.snapshots = list()
+        self.stats = pd.DataFrame({})
+        self.snapshots = defaultdict(dict)
         self.monitor(self.start_time)
 
-    def build_cell_cls(self, cell_cls):
+    @staticmethod
+    def build_cell_cls(cell_cls):
         from submodels import factories
         if callable(cell_cls):
             return cell_cls
@@ -119,14 +118,14 @@ class Brain:
     def debug(self, x):
         if self.verbose:
             print(x)
-            
+
     def info(self, x):
         if not self.silent:
             print(x)
 
     def set_reference_model(self, callback):
         self.reference_model_callback = callback
-        
+
     def init_mapping(self):
         self.mapping = {
             Action.Divide: self.divide,
@@ -134,7 +133,7 @@ class Brain:
             Action.DiffNeuron: self.set_as_neuron,
             Action.NoOp: nop,
         }
-        
+
     def set_swap(self):
         self.mapping[Action.Divide] = self.divide_and_swap
 
@@ -145,8 +144,8 @@ class Brain:
         for i in self.tissue.get_ids():
             index = self.new_cell_id()
             self.population[index] = self.cell_cls(self.start_time,
-                    start=True, brain=self,
-                    index=index, tissue_id=i)
+                                                   start=True, brain=self,
+                                                   index=index, tissue_id=i)
 
             self.tissue_population[i] = index
 
@@ -163,7 +162,7 @@ class Brain:
                 self.info("Population exploded or extinguished")
                 return False
         return True
-            
+
     def run_until(self, time_point):
         """
         Runs until the given time point. Returns True if succeeded and
@@ -178,12 +177,12 @@ class Brain:
             self.current_step += 1
 
         return True
-            
+
     def run_one_step(self):
         if self.current_step >= self.lenrange:
             print("Run is over")
             return False
-        
+
         T = self.range[self.current_step]
         self._tick(T, self.time_step)
         self.current_step += 1
@@ -193,24 +192,23 @@ class Brain:
         self.info(f"Ticking abs : {absolute_time}, step : {relative_time}, size : {len(self.tissue_population)}")
         if not self._sanity_check():
             return False
-        
-        if len(self.tissue_population) < (self.start_population**2 / 2):
-            return False
 
         # take care of cells
         if self.opti:
             self._tick_cell_programs_batch(absolute_time, relative_time)
         else:
             self._tick_cell_programs(absolute_time, relative_time)
-            
-        self.tissue.tick(absolute_time, relative_time)
+
+        if self.run_tissue:
+            self.tissue.tick(absolute_time, relative_time)
 
         self.monitor(absolute_time + relative_time)  # because after computation
-        self.snapshots.append(dict(
-            tissue=self.tissue.export(),
-            tissue_ids=self.tissue_population.copy(),
-        ))
-        assert set(self.tissue.export().keys()) == set(self.tissue_population.keys())
+        if self.record_population:
+            self.create_snapshot_population(absolute_time + relative_time)
+
+        if self.record_tissue:
+            self.create_snapshot_tissue(absolute_time + relative_time)
+
         return True
 
     def _tick_cell_programs(self, absolute_time, relative_time):
@@ -240,8 +238,13 @@ class Brain:
             # raise RuntimeError("Model stops when population increases above {}".format(self.max_pop_size))
             self.info("Population explosion")
             return False
+
+        elif len(self.tissue_population) < (self.start_population ** 2 / 2):
+            self.info("Population exhausted")
+            return False
+
         return True
-    
+
     def monitor(self, absolute_time):
         # monitor
         stats = dict(
@@ -277,9 +280,9 @@ class Brain:
             time_ = T
 
         new_cell_1 = cell.generate_daughter_cell(time_, index=self.new_cell_id(),
-                tissue_id=new_tissue_id1)
+                                                 tissue_id=new_tissue_id1)
         new_cell_2 = cell.generate_daughter_cell(time_, index=self.new_cell_id(),
-                tissue_id=new_tissue_id2)
+                                                 tissue_id=new_tissue_id2)
 
         self.register_cell(new_cell_1)
         self.register_cell(new_cell_2)
@@ -304,25 +307,25 @@ class Brain:
     def get_neighbours(self, cell):
         ngbs = self.tissue.get_neighbours(cell.tissue_id)
         return [self.population[self.tissue_population[i]] for i in ngbs]
-    
+
     def get_neighbours_from_tissue_id(self, tissue_id, exclude=[]):
         ngbs = self.tissue.get_neighbours(tissue_id)
         ngbs = list(set(ngbs) - set(exclude))
         return [self.population[self.tissue_population[i]] for i in ngbs]
-    
+
     def get_ngbs_types(self, tissue_id):
         ls_types = []
         ngbs = self.tissue.get_neighbours(tissue_id)
         for ngb in ngbs:
             if ngb in self.tissue_population:
                 ls_types.append(self.population[self.tissue_population[ngb]].type())
-       
+
         return ls_types
 
     def new_cell_id(self):
         self.id_count += 1
         return self.id_count
-    
+
     def cell_from_tissue_id(self, tissue_id):
         return self.population[self.tissue_population[tissue_id]]
 
@@ -330,9 +333,6 @@ class Brain:
     ### STATISTICS ###
     ##################
 
-    def init_stats(self):
-        self.stats = pd.DataFrame({})
-        
     def init_stats_old(self):
         self.stats = pd.DataFrame(
             {
@@ -343,7 +343,7 @@ class Brain:
             },
             index=[self.start_time],
         )
-        
+
     @lru_cache
     def build_cell_history(self):
         df = pd.DataFrame()
@@ -366,80 +366,23 @@ class Brain:
     def population_size_by_type(self, in_list=False):
         d = dict()
         count = Counter([self.population[index].type() for index
-            in self.tissue_population.values()])
+                         in self.tissue_population.values()])
         for k, v in count.items():
             vv = [v] if in_list else v
             d["size_type_" + str(k.name)] = vv
 
         return d
 
-    def show_end_curve(self, df_pop):
-        xspace = range(int(self.start_time), int(self.end_time) + 1)
-        plt.figure(figsize=(18, 12))
+    def create_snapshot_population(self, time):
+        dict_snap_population = dict()
+        for C_id in list(self.tissue_population.values()):
+            C = self.population[C_id]
+            dict_snap_population[C_id] = C.freeze()
 
-        plt.subplot(2, 2, 1)
-        plt.title("Number or progenitors")
-        plt.plot(xspace, df_pop["cycling_size"] / 100)
-        self.reference_model_callback()  # plt.plot(*sorted_number_cells, 'o', x2, y2)
+        self.snapshots[time]["population"] = dict_snap_population
 
-        plt.subplot(2, 2, 2)
-        plt.title("Rate of differentiation")
-        y_diff = [self.cell_fate_func(x) for x in xspace]
-        plt.plot(xspace, y_diff)
-
-        plt.subplot(2, 2, 3)
-        plt.title("Number or total cells")
-        plt.plot(xspace, df_pop["total_size"] / 100)
-
-        plt.subplot(2, 2, 4)
-        plt.title("Time of cell cycle")
-        y_Tc = [self.Tc_func(x) for x in xspace]
-        plt.ylim(0, max(100, np.max(y_Tc)))
-        plt.plot(xspace, y_Tc)
-        plt.show()
+    def create_snapshot_tissue(self, time):
+        self.snapshots[time]["tissue"] = self.tissue.export()
+        self.snapshots[time]["tissue_ids"] = self.tissue_population.copy()
 
 
-class AbstractCell:
-    def __init__(self, T, start=False, brain=None, index=None, tissue_id=None,
-            parent=None, submodel=None, **kwargs):
-        self.brain = brain
-        self.submodel = submodel
-
-        # cell data
-        self.appear_time = T
-        self.division_time = np.Inf
-        self.index = index
-        self.tissue_id = tissue_id
-        self._type = None
-        self.Tc = None
-        self.eff_Tc = None
-
-        self.parent = parent  # parent is the index of the parent cell
-        self.children = list()
-        self.divided_tag = False
-
-    def get_children(self):
-        return [self.brain.population[idx] for idx in self.children]
-
-    def eff_Tc_h(self):
-        return self.eff_Tc * 24.
-
-    def Tc_h(self):
-        if self.Tc is None:
-            return 0.
-        return self.Tc * 24.
-
-    def set_index(self, index):
-        self.index = index
-
-    def type(self):
-        return self._type
-
-    def generate_daughter_cell(self, T, index, tissue_id=None, **kwargs):
-        if tissue_id is None:
-            tissue_id = self.tissue_id
-
-        self.children.append(index)
-        return type(self)(T, start=False, brain=self.brain, index=index,
-                tissue_id=tissue_id, parent=self.index, submodel=self.submodel,
-                parent_type=self.type(), **kwargs)

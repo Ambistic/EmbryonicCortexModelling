@@ -1,7 +1,8 @@
 from enum import Enum
+import numpy as np
 
-from lib.sde.grn.grn import GRNMain
-from lib.sde.cell.cell import Cell
+from lib.sde.grn.grn3 import GRNMain3 as GRNMain
+from lib.sde.cell.cell3 import Cell3 as Cell, CellBatch3 as CellBatch
 from lib.population import AbstractCell
 from lib.action import Action
 from jf.autocompute.jf import O
@@ -9,9 +10,11 @@ from jf.autocompute.jf import O
 
 class GRNCell(Enum):
     Cell = 1
+    Progenitor = 2
+    PostMitotic = 3
 
 
-class CellGRN1(AbstractCell):
+class CellGRN3(AbstractCell):
     def __init__(self, T, start=False, brain=None, index=None, submodel=None, cell_program=None,
                  **kwargs):
         super().__init__(self, T, **kwargs)
@@ -22,6 +25,7 @@ class CellGRN1(AbstractCell):
         # cell data
         self.appear_time = T
         self.index = index
+        self._type = GRNCell.Cell
 
         self.cell_program: Cell = cell_program if cell_program is not None else \
             self.submodel.cell_cls(self.submodel.grn)
@@ -34,7 +38,13 @@ class CellGRN1(AbstractCell):
         return self._read_cell_program()
 
     def type(self):
-        return GRNCell.Cell
+        return self._type
+
+    def set_neighbourhood(self, neighbours):
+        pass
+
+    def get_action(self):
+        return self._read_cell_program()
 
     # HERE we read the output of the cell !
     def _read_cell_program(self):
@@ -46,14 +56,16 @@ class CellGRN1(AbstractCell):
         """
         thr_division = 1
         thr_differentiation = 1
-        id_division = 1
-        id_differentiation = 2
+        id_division = 0  # this is different from version 2
+        id_differentiation = 1
 
         if self.cell_program.check_action(id_differentiation, thr_differentiation):
+            self._type = GRNCell.PostMitotic
             return Action.DiffNeuron
 
         elif self.cell_program.check_action(id_division, thr_division):
             self.cell_program.reset(id_division)
+            self._type = GRNCell.Progenitor
             return Action.Divide
 
         return Action.NoOp
@@ -62,8 +74,11 @@ class CellGRN1(AbstractCell):
         return self.division_time > C.division_time
 
     def generate_daughter_cell(self, T, index, tissue_id=None, **kwargs):
+        """Requires a provide_index because cell programs are generated simultaneously
+        due to asymmetrical sharing of the molecules"""
         if self.daughter_cells is None:
             self.daughter_cells = self.cell_program.divide()
+
         if self.daughter_provide_index >= len(self.daughter_cells):
             raise RuntimeError("Trying to take the n{} cell but length is {}".format(
                 self.daughter_provide_index, len(self.daughter_cells)
@@ -73,6 +88,9 @@ class CellGRN1(AbstractCell):
         self.daughter_provide_index += 1
         return super().generate_daughter_cell(T, index, tissue_id=tissue_id, cell_program=daughter_cell_program,
                                               **kwargs)
+
+    def freeze(self):
+        return np.asarray(self.cell_program.quantities)
 
 
 class GRNModelFactory:
@@ -85,5 +103,14 @@ class GRNModelFactory:
 
         self.model = O(grn=grn, cell_cls=Cell)
 
-    def generate(self, *args, **kwargs):
-        return CellGRN1(*args, **kwargs, submodel=self.model)
+    def __call__(self, *args, **kwargs):
+        return CellGRN3(*args, **kwargs, submodel=self.model)
+
+    @staticmethod
+    def batch_tick(cells, absolute_time, relative_time):
+        """
+        Equivalent of run_step for all cells
+        """
+        cell_programs = [c.cell_program for c in cells]
+        batch = CellBatch(cell_programs)
+        batch.run_step(relative_time)

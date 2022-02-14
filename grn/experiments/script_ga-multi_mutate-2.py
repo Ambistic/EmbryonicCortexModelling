@@ -5,27 +5,26 @@ import os
 
 from lib.score import score_both_size_new
 
-os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = ".20"
-
 from model import Brain
 from submodels import factories
 import pandas as pd
 from itertools import accumulate
 import numpy as np
-from lib.sde.grn2 import GRNMain2
-from lib.sde.mutate import mutate_grn2
-from lib.ga.utils import weighted_selection, normalize_fitness_values
+from lib.sde.grn.grn2 import GRNMain2
+from lib.sde.mutate import multi_mutate_grn2
+from lib.ga.utils import weighted_selection
 from jf.utils.export import Exporter
 from jf.autocompute.jf import O
 from jf.models.stringmodel import read_model
 
+os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = ".20"
 
 REF = pd.read_csv("output/results/setup_basic/export/ref_basic2.csv")  # ref is a mean
 SM_GEN = read_model("generation")
 
 NB_GENES = 7
 
-NAME = "norm_fitval_median_v2"
+NAME = "multi_mutate_p3_v2"
 
 
 def individual_generator():
@@ -35,13 +34,12 @@ def individual_generator():
 class Solution:
     def __init__(self, grn):
         self.grn = grn
-        
+
     def copy(self):
         return Solution(self.grn.copy())
-        
+
     def mutate(self):
-        # TODO add poisson number of mutation
-        mutate_grn2(self.grn)
+        multi_mutate_grn2(self.grn, value=3)
 
 
 def run_grn(prun, grn):
@@ -53,7 +51,7 @@ def run_grn(prun, grn):
 def get_bb(prun, grn):
     ccls = factories["grn2_opti"](grn=grn)
     bb = Brain(time_step=0.5, verbose=False, start_population=5, max_pop_size=1e3,
-            cell_cls=ccls, end_time=prun.end_time, start_time=50, silent=True)
+               cell_cls=ccls, end_time=prun.end_time, start_time=50, silent=True)
     return bb
 
 
@@ -80,7 +78,7 @@ def fitness_multistep(prun, grn, steps):
         if fitness_step < step.min_fitness or stop:
             return total_fitness, bb.stats
         previous_time = step.end_time
-        
+
     return total_fitness, bb.stats
 
 
@@ -97,7 +95,7 @@ def score_multistep(prun, stats, steps):
         if fitness_step < step.min_fitness or stop:
             return total_fitness
         previous_time = step.end_time
-        
+
     return total_fitness
 
 
@@ -122,12 +120,11 @@ def do_selection(prun, pop_fit, pop):
     acc = list(accumulate(pop_fit))
     best = max(pop_fit)
     best_id = pop_fit.index(best)
-    
+
     print("Total fitness :", acc[-1])
-    new_pop_fit = normalize_fitness_values(pop_fit)
-    
-    pop_sel, history_sel = weighted_selection(pop, new_pop_fit, individual_generator, new_fitness=0.3)
-        
+
+    pop_sel, history_sel = weighted_selection(pop, pop_fit, individual_generator, new_fitness=0.3)
+
     return pop_sel, history_sel, best_id
 
 
@@ -140,7 +137,7 @@ def pick_last_exported(exporter):
     generations = list(filter(SM_GEN.match, exporter.list()))
     if len(generations) == 0:
         return None, 0
-    
+
     last = max(generations, key=lambda x: int(SM_GEN.extract(x).get("generation")))
     n_gen = int(SM_GEN.extract(last).get("generation")) + 1
     exporter.print(f"Found generation {n_gen - 1}", "reload")
@@ -151,7 +148,8 @@ def pick_last_exported(exporter):
 def main(prun):
     exporter = Exporter(name=prun.name, copy_stdout=True)
     definition = """
-    Normalize the fitness values at the median
+    multi_method = poisson
+    multi_value = 3
     """
     exporter.print(definition, slot="definition")
     best = 0
@@ -159,13 +157,13 @@ def main(prun):
     if pop is None:
         pop = do_init_pop(prun)
         n_gen = 0
-        
+
     for generation in range(n_gen, prun.n_gen):
         # args.generation = generation
         # objective.new_trial()
         fit, stats = do_fitness(prun, pop)
         # objective.best_current(max(fit))
-        
+
         # TODO get the stats associated with the best scores
         sel, history_sel, best_id = do_selection(prun, fit, pop)
         if fit[best_id] > best:
@@ -174,7 +172,7 @@ def main(prun):
         else:
             exporter.print(f"-- Best {fit[best_id]}")
         pop = do_mutation(prun, sel)
-        
+
         # history
         monitor = dict(
             transition=history_sel,
@@ -183,7 +181,7 @@ def main(prun):
             stats=stats,
         )
         exporter(monitor, SM_GEN.fill(generation=generation))
-        
+
     return best
 
 

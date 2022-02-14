@@ -1,6 +1,6 @@
-from model import Action
+from lib.action import Action
 from submodels.grn_v1 import GRNModelFactory
-from lib.sde.grn import GRNMain
+from lib.sde.grn.grn import GRNMain
 import pytest
 
 
