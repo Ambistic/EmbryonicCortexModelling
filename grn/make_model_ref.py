@@ -75,7 +75,8 @@ def main_size(args):
 
         mean_series.append(df_group)
 
-    final_df = pd.concat(mean_series, axis=1).reset_index()
+    final_df = pd.concat(mean_series, axis=1).reset_index().copy()
+    final_df["neuron_pop_size"] = final_df["whole_pop_size"] - final_df["progenitor_pop_size"]
     final_df.to_csv(args.output)
 
 

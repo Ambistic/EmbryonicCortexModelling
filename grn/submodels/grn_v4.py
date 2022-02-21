@@ -1,3 +1,4 @@
+import contextlib
 from enum import Enum
 import numpy as np
 
@@ -44,6 +45,10 @@ class CellGRN4(AbstractCell):
         # here integrate the signal
         env = [n.cell_program for n in neighbours]
         self.cell_program.integrate_environment(env)
+
+    def lazy_set_neighbourhood(self, neighbours):
+        env = [contextlib.closing for n in neighbours]
+        self.cell_program.set_brain_environment(env)
 
     def get_action(self):
         return self._read_cell_program()
