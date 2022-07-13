@@ -272,6 +272,59 @@ class Var(Formula):
         return lambda x: x[self.name]
 
 
+class SignedVar(Formula):
+    """
+    Var can handle both dict and list-like values
+    """
+    nb_children = 0
+
+    def __init__(self, name, sign: bool):
+        super().__init__()
+        self.name = name
+        self.children = []
+        self.sign = sign  # True for positive
+
+    def is_positive(self):
+        return self.sign
+
+    def __call__(self, values):
+        if self.is_positive():
+            return values[self.name]
+        else:
+            return 1 - values[self.name]
+
+    def __repr__(self):
+        prefix = "-" if self.is_positive() else ""
+        return f"{prefix}{self.name}"
+
+    def _to_json(self):
+        return self.name
+
+    def to_dict(self):
+        return dict(op="SignedVar", val=self.name, sign=self.sign)
+
+    def labels_set(self):
+        return {self.name}
+
+    def op_set(self):
+        return []
+
+    def gene_list(self):
+        return [self]
+
+    def replace(self, old, new):
+        raise NotImplementedError("Cannot replace a WeightedVar")
+
+    def as_lambda(self):
+        """
+        The x param in the lambda function is the vector transmitted
+        """
+        if self.is_positive():
+            return lambda x: x[self.name]
+        else:
+            return lambda x: 1 - x[self.name]
+
+
 def formula_from_dict(dictf):
     op = dictf["op"]
 
@@ -288,6 +341,9 @@ def formula_from_dict(dictf):
 
     if op == "Var":
         return Var(dictf["val"])
+
+    if op == "SignedVar":
+        return SignedVar(dictf["val"], dictf["sign"])
 
 
 Ops = [And, Or, Not]

@@ -6,7 +6,7 @@ from lib.preprocess import preprocess_whole_size, preprocess_progenitor_size
 from lib.utils import (shrink_and_align_stats, align_time, normalize_time,
                        shrink_time, as_time_lists)
 
-REF = pd.read_csv("output/results/setup_basic/export/ref_basic2.csv")  # ref is a mean
+REF = pd.read_csv("reference/ref_tristate2.csv")  # ref is a mean
 
 
 def score_coefficient_variation_old(x, y):

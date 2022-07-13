@@ -29,6 +29,16 @@ def grn_from_json(json_str):
         grn.set_param(**json_dict)
         return grn
 
+    elif json_dict["object_name"] == "GRNMain5":
+        from lib.sde.grn.grn5 import GRNMain5
+        class_ = GRNMain5
+        grn = class_(nb_genes=json_dict["nb_genes"],
+                     nb_membrane_gene=json_dict["nb_membrane_gene"],
+                     nb_off_trees=json_dict["nb_off_trees"])
+
+        grn.set_param(**json_dict)
+        return grn
+
     else:
         raise ValueError(f"Class does not exist : {json_dict['object_name']}"
                          "You may have forgotten to add the class to the serializer "

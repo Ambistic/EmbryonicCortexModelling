@@ -21,12 +21,26 @@ def cell_number_callback(cp: CellPopulation):
 
 
 class TypeNumberCallback:
-    """This class assumes that the type must be inside the progenitor pool"""
-    def __init__(self, typename):
+    """This class handles progenitor, post mitotic and whole pool"""
+    def __init__(self, typename, target_population=TargetPopulation.progenitor):
+        assert target_population in TargetPopulation
+        self.target_population = target_population
         self.typename = typename
 
     def __call__(self, cp: CellPopulation):
-        return len([x for x in cp.tissue_population.values()
+        if self.target_population is TargetPopulation.progenitor:
+            ref_indexes = cp.tissue_population.values()
+
+        elif self.target_population is TargetPopulation.postmitotic:
+            # TODO not ok
+            ref_indexes = cp.post_mitotic  # is this cells or ids ?
+
+        elif self.target_population is TargetPopulation.whole:
+            ref_indexes = cp.base_population.keys()
+        else:
+            raise ValueError("`target_population` not understood")
+            
+        return len([x for x in ref_indexes
                     if cp.base_population[x].type() == self.typename])
 
 

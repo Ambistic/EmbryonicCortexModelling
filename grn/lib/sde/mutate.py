@@ -3,15 +3,19 @@ from lib.sde.grn.grn import GRNMain
 from lib.sde.grn.grn2 import GRNMain2
 from lib.sde.grn.grn3 import GRNMain3
 from lib.sde.grn.grn4 import GRNMain4
+from lib.sde.grn.grn5 import GRNMain5
 from lib.sde.gene.gene4 import GeneMain4
-from lib.sde.util.formula import And, Or, Not, Var, Formula
+from lib.sde.gene.gene5 import GeneMain5
+from lib.sde.util.formula import And, Or, Not, Var, Formula, SignedVar
 import random
+import numpy as np
 
 from lib.sde.util.initializer import generate_random_init, generate_random_noise, generate_random_expr, \
     generate_random_deg, generate_random_thr, generate_random_theta, generate_random_m, generate_random_b, \
     generate_random_tree, generate_random_expr2, generate_random_deg2, generate_random_asym
 
 _op = [And, Or, Not]
+_op_2 = [And, Or]
 
 
 def mutate_grn(grn: GRNMain):
@@ -62,6 +66,46 @@ def mutate_grn4(grn: GRNMain4):
     for i in range(nb_mut):
         _mutate_grn4(grn)
     grn.compile()
+
+
+def _mutate_grn5(grn: GRNMain5):
+    one_gene = random.choice(grn.genes)
+    mutate_gene5(one_gene)
+
+
+def mutate_grn5(grn: GRNMain4):
+    nb_mut = grn.var.get("nb_mut", 1)
+    mutate_var(grn)
+    grn.set_mutable()
+    for i in range(nb_mut):
+        _mutate_grn5(grn)
+    grn.compile()
+    
+    
+class SparseMutator:
+    def __init__(self, temperature=0.1, sparsity=0.2, hook=None):
+        self.temperature = temperature
+        self.sparsity = sparsity
+        self.hook = hook
+        
+    def __call__(self, grn):
+        grn.set_mutable()
+        shape = grn._params.shape
+        r = random.random()
+        param_prob = 0.8
+        if r < param_prob:
+            mask = (np.random.uniform(0, 1, shape) < self.sparsity)
+            coeff = np.random.normal(0, self.temperature, shape)
+            true_coeff = mask * coeff + 1
+            grn._params *= true_coeff
+        else:
+            one_gene = random.choice(grn.genes)
+            one_gene.tree = mutate_tree_2(one_gene.tree, one_gene.get_labels_not_in_tree())
+
+        if self.hook is not None:
+            self.hook(grn)
+
+        grn.compile()
 
 
 def multi_mutate_grn2(grn: GRNMain2, value=1, method="poisson"):
@@ -121,7 +165,7 @@ def mutate_gene4(gene: GeneMain):
         gene.tree = mutate_tree(gene.tree, gene.get_labels_not_in_tree())  # TODO add the labels here !!!
 
 
-def mutate_gene5(gene: GeneMain4, generate_funcs: dict = None):
+def mutate_gene5(gene: GeneMain5, generate_funcs: dict = None):
     r = random.random()
     reinit_prob = 0.05
     smooth_param_prob = 0.65
@@ -133,7 +177,7 @@ def mutate_gene5(gene: GeneMain4, generate_funcs: dict = None):
         mutate_smooth_param3(gene)
 
     else:
-        gene.tree = mutate_tree(gene.tree, gene.get_labels_not_in_tree())  # TODO add the labels here !!!
+        gene.tree = mutate_tree_2(gene.tree, gene.get_labels_not_in_tree())  # TODO add the labels here !!!
 
 
 def mutate_gene(gene: GeneMain, param_prob=0.5):
@@ -191,24 +235,25 @@ def mutate_param3(gene):
 
 
 def mutate_smooth_param3(gene):
-    r = random.uniform(0.8, 1.2)
+    r = random.random()
+    c = random.uniform(0.8, 1.2)
     nb_param = 8
     if r < 1 / nb_param:
-        gene.b = gene.b * r
+        gene.b = gene.b * c
     elif r < 2 / nb_param:
-        gene.m = gene.m * r
+        gene.m = gene.m * c
     elif r < 3 / nb_param:
-        gene.expr = gene.expr * r
+        gene.expr = gene.expr * c
     elif r < 4 / nb_param:
-        gene.deg = gene.deg * r
+        gene.deg = gene.deg * c
     elif r < 5 / nb_param:
-        gene.init = gene.init * r
+        gene.init = gene.init * c
     elif r < 6 / nb_param:
-        gene.noise = gene.noise * r
+        gene.noise = gene.noise * c
     elif r < 7 / nb_param:
-        gene.asym = gene.asym * r
+        gene.asym = gene.asym * c
     else:
-        gene.theta = gene.theta * r
+        gene.theta = gene.theta * c
 
 
 def mutate_param4(gene):
@@ -330,6 +375,83 @@ def tree_substitute_gene(tree: Formula, labels: set) -> Formula:
 
 
 def tree_remove_gene(tree: Formula, labels: set) -> Formula:
+    tree = tree.copy()
+    assert len(tree.labels_set()) > 1, "Cannot remove gene when there is only 1 gene"
+    target = tree.random_gene()
+
+    # find closer binary parent
+    parent, direct_child = target.parent, target
+    while parent.nb_children != 2:
+        parent, direct_child = parent.parent, direct_child.parent
+
+    other_child = parent.other_child(direct_child)
+
+    if parent.is_root():
+        tree = other_child
+
+    else:
+        parent.parent.replace(parent, other_child)
+
+    tree.update()
+    return tree
+
+
+def mutate_tree_2(tree: Formula, labels: set):
+    if len(tree.labels_set()) >= 3:  # for grn with too many genes
+        func = random.choice([tree_remove_gene_2, tree_substitute_gene_2])
+    else:
+        func = random.choice([tree_add_gene_2, tree_remove_gene_2, tree_substitute_gene_2])
+    # make that cannot add if already too much genes
+    try:
+        new_tree = func(tree, labels)
+    except AssertionError:
+        new_tree = tree
+
+    return new_tree
+
+
+def tree_from_scratch_2(tree: Formula, labels: set) -> Formula:
+    # TODO implicit initialization ...
+    return generate_random_tree_2(labels | tree.labels_set())
+
+
+def tree_add_gene_2(tree: Formula, labels: set) -> Formula:
+    tree = tree.copy()
+    op = random.choice(_op_2)
+    available_labels = list(labels - tree.labels_set())
+    assert len(available_labels) > 0, "Cannot substitute because no gene is available"
+    gene = SignedVar(random.choice(available_labels), bool(random.randint(0, 1)))
+    target = tree.random_op()
+
+    if target.is_root():
+        tree = op(target, gene)
+
+    else:
+        target.parent.replace(target, op(target, gene))
+
+    tree.update()
+    return tree
+
+
+def tree_substitute_gene_2(tree: Formula, labels: set) -> Formula:
+    tree = tree.copy()
+    available_labels = list(labels - tree.labels_set())
+    assert len(available_labels) > 0, "Cannot substitute because no gene is available"
+    gene = random.choice(available_labels)
+    gene = SignedVar(gene, bool(random.randint(0, 1)))
+    target = tree.random_gene()
+
+    if target.is_root():
+        tree = gene
+
+    else:
+        target.parent.replace(target, gene)
+
+    tree.update()
+    return tree
+
+
+def tree_remove_gene_2(tree: Formula, labels: set) -> Formula:
     tree = tree.copy()
     assert len(tree.labels_set()) > 1, "Cannot remove gene when there is only 1 gene"
     target = tree.random_gene()

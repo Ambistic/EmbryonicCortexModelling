@@ -22,6 +22,30 @@ def preprocess_whole_size(stats, ref):
     return x, y
 
 
+def preprocess_progenitor_size_2(stats, ref):
+    colname_ref = "progenitor_pop_size"
+    colname_stats = "progenitor_pop_size"
+    
+    min_step = min(ref.index)  # ref.index is the time
+    stats[colname_stats] = stats[colname_stats] / stats[colname_stats].get(min_step)
+    ref[colname_ref] = ref[colname_ref] / ref[colname_ref].get(min_step)
+    x = [ref[colname_ref].get(t, 0) for t in ref.index]
+    y = [stats[colname_stats].get(t, 0) for t in stats.index]
+    return x, y
+
+
+def preprocess_whole_size_2(stats, ref):
+    colname_ref = "whole_pop_size"
+    colname_stats = "whole_pop_size"
+    
+    min_step = min(ref.index)  # ref.index is the time
+    stats[colname_stats] = stats[colname_stats] / stats[colname_stats].get(min_step)
+    ref[colname_ref] = ref[colname_ref] / ref[colname_ref].get(min_step)
+    x = [ref[colname_ref].get(t, 0) for t in ref.index]
+    y = [stats[colname_stats].get(t, 0) for t in stats.index]
+    return x, y
+
+
 def all_daughter_defined(cell, population):
     """ Warning : the word Cell must correspond to an unknown type"""
     if not len(cell.children) == 2:

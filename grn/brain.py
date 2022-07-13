@@ -108,6 +108,11 @@ class BrainModel(Base):
         self.stats = pd.DataFrame({})
         self.snapshots = defaultdict(dict)
         self.monitor(self.start_time)
+        if self.record_population:
+            self.create_snapshot_population(self.start_time)
+
+        if self.record_tissue:
+            self.create_snapshot_tissue(self.start_time)
 
     @staticmethod
     def build_cell_cls(cell_cls):

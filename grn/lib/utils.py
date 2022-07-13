@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from jf.models.stringmodel import read_model
 
 # function to consistently set a coeff to a proportion
 # the basic rationale is that 1.1 * 0.1 increase only 0.1
@@ -105,3 +106,18 @@ def as_time_lists(df_data, df_ref, col_data, col_ref):
 
 def mean_dict(*dicts):
     return dict(pd.DataFrame(list(dicts)).mean())
+
+
+def pick_last(exp, sm=None):
+    if sm is None:
+        sm = read_model("generation")
+    return sm.pick_last(sorted(exp.list()), slot="generation")
+
+
+def pick_best(res):
+    return res[res.index(max(res, key=lambda x: x.fit))]
+
+
+def pick_last_best(exp, sm=None):
+    res = exp.load(pick_last(exp))
+    return pick_best(res)

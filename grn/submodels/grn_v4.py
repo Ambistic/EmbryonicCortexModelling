@@ -97,7 +97,13 @@ class CellGRN4(AbstractCell):
                                               **kwargs)
 
     def freeze(self):
-        return np.asarray(self.cell_program.quantities)
+        return dict(
+            quantity=np.asarray(self.cell_program.quantities),
+            activation=np.asarray(self.cell_program.activation),
+            expression=np.asarray(self.cell_program.expression),
+            derivative=np.asarray(self.cell_program.derivative),
+            environment=np.asarray(self.cell_program.environment),
+        )
 
 
 class GRNModelFactory:
